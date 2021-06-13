@@ -134,6 +134,7 @@ import (
 	_ "github.com/influxdata/telegraf/plugins/inputs/pf"
 	_ "github.com/influxdata/telegraf/plugins/inputs/pgbouncer"
 	_ "github.com/influxdata/telegraf/plugins/inputs/phpfpm"
+	_ "github.com/influxdata/telegraf/plugins/inputs/pika"
 	_ "github.com/influxdata/telegraf/plugins/inputs/ping"
 	_ "github.com/influxdata/telegraf/plugins/inputs/postfix"
 	_ "github.com/influxdata/telegraf/plugins/inputs/postgresql"
