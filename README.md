@@ -294,6 +294,7 @@ For documentation on the latest development code see the [documentation index][d
 * [pgbouncer](./plugins/inputs/pgbouncer)
 * [phpfpm](./plugins/inputs/phpfpm)
 * [phusion passenger](./plugins/inputs/passenger)
+* [pika](./plugins/inputs/pika)
 * [ping](./plugins/inputs/ping)
 * [postfix](./plugins/inputs/postfix)
 * [postgresql_extensible](./plugins/inputs/postgresql_extensible)
