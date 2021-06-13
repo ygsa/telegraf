@@ -283,6 +283,7 @@ For documentation on the latest development code see the [documentation index][d
 * [nsq_consumer](./plugins/inputs/nsq_consumer)
 * [nsq](./plugins/inputs/nsq)
 * [nstat](./plugins/inputs/nstat)
+* [ntpdate](./plugins/inputs/ntpdate)
 * [ntpq](./plugins/inputs/ntpq)
 * [nvidia_smi](./plugins/inputs/nvidia_smi)
 * [opcua](./plugins/inputs/opcua)
