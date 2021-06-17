@@ -1,0 +1,172 @@
+#!/bin/bash
+# set the global tags and graphite server
+# 2021-06-17 <chenzhe07@gmail.com>
+
+set -e -o pipefail
+[ "$DEBUG" ] && set -x
+
+# log funtion
+ts() {
+  TS=$(date +%F-%T | tr ':-' '_')
+  echo "$TS - $*"
+}
+
+log() {
+  ts "[info] $*"
+}
+
+warn() {
+  ts "[warn] $*" >&2
+}
+
+error() {
+  ts "[error] $*" >&2
+  exit 1
+}
+
+die() {
+  ts "[fatal] $*" >&2
+  exit 2
+}
+
+# Run the program
+main() {
+  for o; do
+    case "${o}" in
+      -d)       shift; OPT_DC="$1";      shift;  ;;
+      -m)       shift; OPT_MARK="$1";    shift;  ;;
+      -t)       shift; OPT_TEAM="$1";    shift;  ;;
+      -1)       shift; OPT_SERVER1="$1"; shift; ;;
+      -2)       shift; OPT_SERVER2="$1"; shift; ;;
+      -v)       grep -A2 '^=head1 VERSION' "$0" | tail -n1; exit 0 ;;
+      -h)       perl -00 -ne 'm/^\s+Usage:/ && print' "$0"; exit 0 ;;
+      -*)       echo "Unknown option ${o}. Try -h."; exit 1; ;;
+    esac
+  done
+
+  OPT_DC="${OPT_DC:-"NULL"}"
+  OPT_MARK="${OPT_MARK:-"NULL"}"
+  OPT_TEAM="${OPT_TEAM:-"NULL"}"
+  OPT_SERVER1="${OPT_SERVER1:-"NULL"}"
+  OPT_SERVER2="${OPT_SERVER2:-"NULL"}"
+
+  if [[ $OPT_DC == "NULL" \
+        && $OPT_MARK == "NULL" \
+        && $OPT_TEAM == "NULL" ]]; then
+    error "both of the -d, -m, -t are NULL, skip..."
+  fi
+
+  if [[ $OPT_SERVER1 == "NULL" \
+        && $OPT_SERVER2 == "NULL" ]]; then
+    error "must set servers"
+  fi
+
+  # overwrite or touch /etc/default/telegraf
+  cat <<EOF > /etc/default/telegraf
+DC="$OPT_DC"
+MARK="$OPT_MARK"
+TEAM="$OPT_TEAM"
+EOF
+
+  if [[ "$?" -eq 0 ]]; then
+    log "change global tags ok"
+  else
+    error "change global tags error"
+  fi
+
+  if grep '{{graphites}}' /etc/telegraf/telegraf.conf >/dev/null 2>&1; then
+    SERVERS=$(verify_servers $OPT_SERVER1 $OPT_SERVER2)
+    [ "$SERVERS" ] && {
+      sed -i "s/{{graphites}}/$SERVERS/" /etc/telegraf/telegraf.conf
+      [[ "$?" -eq 0 ]] && {
+        log "change servers to $SERVERS ok"
+      } || {
+        error "change servers to $SERVERS error"
+      }
+    }
+  fi
+}
+
+verify_servers() {
+  local server1="$1"
+  local server2="$2"
+  echo -e "$server1\n$server2" | \
+    perl -ne '
+      BEGIN {
+        use IO::Socket::INET;
+	my @servers;
+      };
+      
+      chomp;
+      my $fail = 0;
+      my ($host, $port) = split(/(?::|\s+)/, $_);
+      $port ||= 2003;
+      my $socket = IO::Socket::INET->new(
+        PeerAddr => $host,
+        PeerPort => $port,
+        Proto    => tcp,
+        Timeout  => 3,
+      ) || $fail++;
+      
+      if ($fail > 0) {
+        next;
+      }
+      unless (grep(/$host:$port/, @servers)) {
+        push @servers, "\"$host:$port\"";
+      }
+    
+      END {
+        if (@servers + 0 > 0) {
+          print join(", ", @servers);
+        }
+        else {
+          print "";
+        }
+      }
+    '
+}
+
+is_sourced() {
+  [ "${0##*/}" = "telegraf-prepare" ] || [ "${0##/}" = "bash" -a "$_" = "$0" ]
+}
+
+if is_sourced; then
+  OUTPUT=$(main "$@")
+  echo "${OUTPUT}"
+  exit 0
+fi
+
+# Documentation
+: <<'DOCUMENTATION'
+=pod
+
+=head1 NAME
+
+telegraf-prepare - set the global tags and graphite servers for the telegraf setting.
+
+=head1 SYNOPSIS
+
+  Usage: telegraf-tags [OPTIONS]
+  OPTION:
+    -d set the WMDC tag, default is NULL.
+    -m set the WMMARK tag, default is NULL.
+    -t set the WMTEAM tag, default is NULL.
+    -l graphite server 1, must set avalid ip address.
+    -2 graphite server 2, must set avalid ip address.
+    -v print version message.
+    -h print help message.
+  eg:
+    telegraf-tags -d beijing -m test -t sre -1 server1 -2 server2
+  note: telegraf-tags will change the file /etc/default/telegraf.
+
+
+=head1 AUTHOR
+
+chenzhe07@gmail.com
+
+=head1 VERSION
+
+telegraf-tags v1.18.3
+
+=cut
+DOCUMENTATION
