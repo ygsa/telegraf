@@ -98,7 +98,7 @@ func (m *Megacli) Init() error {
 
 	ver := m.getMegacliVersion()
 	if ver == float64(0.0) {
-		return errors.New("MegaCli: can not get version!")
+		return errors.New("MegaCli: can not get version, may be add sudo privileges!")
 	} else {
 		if ver < 8.0 {
 			m.Log.Errorf("MegaCli [Ver %.2f] is too old, maybe cause performance issue when the system is busy!", ver)

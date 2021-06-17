@@ -204,6 +204,7 @@ install: $(buildbin)
 	@if [ $(GOOS) = "linux" ]; then mkdir -pv $(DESTDIR)$(prefix)/lib/telegraf/scripts; fi
 	@if [ $(GOOS) = "linux" ]; then cp -fv scripts/telegraf.service $(DESTDIR)$(prefix)/lib/telegraf/scripts; fi
 	@if [ $(GOOS) = "linux" ]; then cp -fv scripts/init.sh $(DESTDIR)$(prefix)/lib/telegraf/scripts; fi
+	@if [ $(GOOS) = "linux" ]; then cp -fv scripts/telegraf-prepare $(DESTDIR)$(bindir); fi
 
 # Telegraf build per platform.  This improves package performance by sharing
 # the bin between deb/rpm/tar packages over building directly into the package
@@ -319,7 +320,7 @@ $(rpms):
 		--name telegraf \
 		--version $(version) \
 		--iteration $(rpm_iteration) \
-        --chdir $(DESTDIR) \
+        	--chdir $(DESTDIR) \
 		--package $(pkgdir)/$@
 
 deb_amd64 := amd64
