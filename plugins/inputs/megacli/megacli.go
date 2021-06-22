@@ -82,13 +82,13 @@ func (m *Megacli) Init() error {
 	m.PathMegacli, err = exec.LookPath("MegaCli")
 	if err != nil {
 		m.PathMegacli = ""
-		return errors.New("MegaCli not found: verify that MegaCli is installed and that MegaCli is in your PATH")
+		m.Log.Warn("MegaCli not found: verify that MegaCli is installed and that MegaCli is in your PATH")
 	}
 
 	for _, tval := range m.GatherType {
 		if tval != "raid" && tval != "disk" && tval != "bbu" {
 			m.GatherType = nil
-			return errors.New(fmt.Sprintf("gother_type: unknown type %s, must be raid, disk or bbu", tval))
+			m.Log.Errorf(fmt.Sprintf("gother_type: unknown type %s, must be raid, disk or bbu", tval))
 		}
 	}
 	if len(m.GatherType) == 0 {
@@ -98,11 +98,10 @@ func (m *Megacli) Init() error {
 
 	ver := m.getMegacliVersion()
 	if ver == float64(0.0) {
-		return errors.New("MegaCli: can not get version, may be add sudo privileges!")
+			m.Log.Error("MegaCli: can not get version, may be not add sudo privileges!")
 	} else {
 		if ver < 8.0 {
-			m.Log.Errorf("MegaCli [Ver %.2f] is too old, maybe cause performance issue when the system is busy!", ver)
-			return errors.New("MegaCli is too old, ignore...")
+			m.Log.Warnf("MegaCli [Ver %.2f] is too old, maybe cause performance issue when the system is busy!", ver)
 		}
 	}
 
