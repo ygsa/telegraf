@@ -974,7 +974,11 @@ func (m *Mysql) GatherUserStatisticsStatuses(db *sql.DB, serv string, acc telegr
 			case *int64:
 				fields[cols[i]] = *v
 			case *float64:
-				fields[cols[i]] = *v
+				if isInSlice([]string{"connected_time", "busy_time", "cpu_time"}, string(cols[i])) {
+					fields[cols[i]] = formatFloat(*v, float64(1.001))
+				} else {
+					fields[cols[i]] = formatFloat(*v, float64(1.000))
+				}
 			case *string:
 				fields[cols[i]] = *v
 			default:
@@ -984,6 +988,23 @@ func (m *Mysql) GatherUserStatisticsStatuses(db *sql.DB, serv string, acc telegr
 		acc.AddFields("mysql_user_stats", fields, tags)
 	}
 	return nil
+}
+
+func formatFloat(f float64, unit float64) float64 {
+	n, err := strconv.ParseFloat(fmt.Sprintf("%.3f", f * unit), 64)
+	if err != nil {
+		return f
+	}
+	return n
+}
+
+func isInSlice(slice []string, item string) bool {
+	set := make(map[string]struct{}, len(slice))
+	for _, s := range slice {
+		set[s] = struct{}{}
+	}
+	_, ok := set[item]
+	return ok
 }
 
 // columnsToLower converts selected column names to lowercase.
@@ -1006,9 +1027,9 @@ func getColSlice(l int) ([]interface{}, error) {
 		user                     string
 		totalConnections         int64
 		concurrentConnections    int64
-		connectedTime            int64
-		busyTime                 int64
-		cpuTime                  int64
+		connectedTime            float64
+		busyTime                 float64
+		cpuTime                  float64
 		bytesReceived            int64
 		bytesSent                int64
 		binlogBytesWritten       int64
