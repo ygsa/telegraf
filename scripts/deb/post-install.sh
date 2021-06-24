@@ -102,22 +102,22 @@ get_one_ip() {
   '
 }
 
-# change telegraf.conf IP
-if [[ -f /etc/telegraf/telegraf.conf ]]; then
-  IP=$(get_one_ip)
-  IP="${IP:-"NULL"}"
-  sed -i "s/{{IP}}/$IP/" /etc/telegraf/telegraf.conf
-fi
-
 # Add defaults file, if it doesn't exist
 if [[ ! -f /etc/default/telegraf ]]; then
-    touch /etc/default/telegraf
-    cat <<EOF >> /etc/default/telegraf
+  touch /etc/default/telegraf
+fi
+
+if [[ -f /etc/default/telegraf ]]; then
+  IP=$(get_one_ip)
+  IP="${IP:-"NULL"}"
+  cat <<EOF >> /etc/default/telegraf
 DC="NULL"
 MARK="NULL"
 TEAM="NULL"
+IP="$IP"
 EOF
 fi
+
 
 # Add more default input conf
 if [[ -d /etc/telegraf/telegraf.d ]]; then
@@ -126,6 +126,7 @@ if [[ -d /etc/telegraf/telegraf.d ]]; then
     cat <<EOF >> /etc/telegraf/telegraf.d/ntpdate.conf
 ## Read ntpdate's basic status information
 #[[inputs.ntpdate]]
+#  interval = "3600s"
 #  # An array of address to gather stats about. Specify an ip address or domain name.
 #  servers = ["0.centos.pool.ntp.org", "162.159.200.1"]
 #
@@ -145,6 +146,7 @@ EOF
 ## Read megacli's basic status information
 ## This canbe used in physical server.
 #[[inputs.megacli]]
+#  interval = "3600s"
 #  ## Optionally specify the path to the megacli executable
 #  path_megacli = "/usr/bin/MegaCli"
 #
