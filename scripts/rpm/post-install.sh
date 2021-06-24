@@ -46,6 +46,7 @@ fi
 # If 'telegraf.conf' is not present use package's sample (fresh install)
 if [[ ! -f /etc/telegraf/telegraf.conf ]] && [[ -f /etc/telegraf/telegraf.conf.sample ]]; then
    cp /etc/telegraf/telegraf.conf.sample /etc/telegraf/telegraf.conf
+   touch /etc/telegraf/discovery.conf
 fi
 
 get_one_ip() {
@@ -122,6 +123,7 @@ TEAM="NULL"
 IP="$IP"
 EOF
 fi
+
 # Add more default input conf
 if [[ -d /etc/telegraf/telegraf.d ]]; then
   # add ntpdate check
@@ -249,6 +251,14 @@ fi
 test -d $LOG_DIR || mkdir -p $LOG_DIR
 chown -R -L telegraf:telegraf $LOG_DIR
 chmod 755 $LOG_DIR
+
+# add discover cron task
+if [[ -d /etc/cron.d ]] && [[ -d $LOG_DIR ]]; then
+    cat <<EOF > /etc/cron.d/telegraf
+PATH=/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/sbin:/usr/local/bin
+* * * * * root telegraf-discover --verbose --update >>$LOG_DIR/telegraf-discover.log
+EOF
+fi
 
 # Distribution-specific logic
 if [[ -f /etc/redhat-release ]] || [[ -f /etc/SuSE-release ]]; then

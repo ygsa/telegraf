@@ -1,0 +1,1022 @@
+#!/usr/bin/env perl
+=head1 NAME
+
+  telegraf-discover - discover db process and change telegraf configure file
+
+=cut
+
+=head1
+
+  use telegraf-discover --help for more info.
+  options:
+    conf:    telegraf configure file, default is 
+                /etc/telegraf/telegraf.conf;
+    confd:   telegraf configure directory, default is
+                /etc/telegraf/telegraf.d;
+    disf:    ini style configure file to store db user and pass, 
+                default is /etc/telegraf/discovery.conf;
+    update:  whether generate sub configure file or not,
+                default is /etc/telegraf/telegraf.d/<db>-auto.conf;
+    verbose: print more messages.
+
+
+    the sample of the `disf` file, multiple database maybe running in 
+    one host, we'll inherit default pass if not set instance pass:
+
+      # /etc/telegraf/discovery.conf
+      [mysql]
+      user=monitor  # can not change by instance
+      pass=xxxxxx   # default pass
+      3306=111111   # pass for 3306 port
+      3307=222222   # pass for 3307 port
+
+      [redis]
+      6379=xxxxx    # pass for 6379 port
+
+      [memcached]
+
+     Note: 
+       Currently only the following types are supported:
+          memcached, mysql, mongodb, redis, pika
+=cut
+
+use strict;
+use warnings;
+use POSIX qw(strftime);
+use Getopt::Long;
+use Carp;
+use encoding "utf8";
+
+BEGIN {
+   $INC{$_} = __FILE__ for map { (my $pkg = "$_.pm") =~ s!::!/!g; $pkg } (qw(
+      Utils
+      Disconf
+   ));
+}
+
+my($update,$verbose,$help);
+my $conf  = "/etc/telegraf/telegraf.conf";
+my $confd = "/etc/telegraf/telegraf.d";
+my $disf  = "/etc/telegraf/discovery.conf";
+
+GetOptions(
+  "conf=s"   => \$conf,
+  "confd=s"  => \$confd,
+  "disf=s"   => \$disf,
+  "update!"  => \$update,
+  "verbose!" => \$verbose,
+  "help|h"   => \$help,
+) or die "error:$!";
+
+if ($help) {
+  usage($0);
+}
+
+sub usage {
+  my $name = shift;
+  system("perldoc -T $name");
+  exit 0;
+}
+
+Utils::create_dir_if("$confd") 
+  or croak "create $confd error and $confd is not exist";
+
+my $disconf = Disconf->new( (update => $update) );
+my $results = $disconf->get_listen_ports();
+my $sects   = Utils::parsecfg($disf);
+$| = 1; # enforce flush for print
+
+unless (defined $results) {
+  Utils::time_print("error - cann't get listen port lists, exit ...");
+  exit 1;
+}
+
+my $is_trigger = 0;
+
+# generate sub conf file by type
+foreach my $type (keys %$results) {
+  next unless $disconf->is_support($type);
+
+  my $i = $disconf->gen_conf_by_type(
+            $confd, $type,
+            $results->{$type}, 
+            $sects->{$type}
+          );
+  $is_trigger += $i;
+}
+
+# should restart telegraf service
+if ($is_trigger > 0) {
+  Utils::time_print("need restart telegraf") if $verbose;
+  if ($update) {
+    my $cmd = "service telegraf restart";
+    my($high, $low) = Utils::exec_system("$cmd");
+    if ($high != 0 || $low != 0) {
+      Utils::time_print("error - $cmd execute error! high: $high, low: $low");
+    }
+    else {
+      Utils::time_print("ok - $cmd execute ok.");
+    }
+    sleep 1; # wait a moment
+  }
+}
+
+# ensure telegraf process is running
+my $pid = Utils::exec_cmd_return("pidof telegraf");
+my $is_alive = kill 0, $pid;
+if ($is_alive) {
+  Utils::time_print("ok - telegraf is running");
+}
+else {
+  Utils::time_print("error - telegraf is not running");
+}
+
+=head1 AUTHOR
+
+zhe.chen <chenzhe07@gmail.com>
+
+=head1 CHANGELOG
+
+v0.1.0 version
+
+=cut
+
+# ####################################################################
+# Utils packages
+# ####################################################################
+package Utils;
+# common utils methods
+# <chenzhe07@gmail.com>
+use strict;
+use warnings FATAL => 'all';
+use English qw(-no_match_vars);
+use POSIX qw(strftime);
+use File::Path;
+use File::Find;
+use IO::Socket::INET;
+use Carp;
+
+use vars qw($VERSION);
+our $VERSION = '0.10';
+
+sub create_dir_if {
+  my $dir  = shift;
+  if (!-d $dir) {
+    eval {
+      mkpath($dir);
+    };
+    if ($@) {
+      my $e = $@;
+      undef $@;
+      unless (-d $dir) {
+        carp "failed to create dir:$dir:$e";
+        return 0;
+      }
+    }
+  }
+  return 1;
+}
+
+sub create_cnf_if {
+  my $cnf   = shift;
+  my $res   = shift;
+  my $force = shift || 0;
+
+  if (-e $cnf && !$force) {
+    return 0;
+  }
+
+  # write res to cnf
+  open my $fh, '>', $cnf or carp "open $cnf error: $!";
+  return 0 unless defined $fh;
+
+  eval {
+    print $fh $res;
+    close $fh;
+  };
+  if ($@) {
+    carp "write $cnf error: $@";
+    return 0;
+  }
+
+  return 1;
+}
+
+sub is_dir_empty {
+  my $dir = shift;
+  return 0 unless -d $dir;
+  opendir (my $dh, $dir) or carp "failed to open $dir";
+
+  my $num = 0;
+
+  eval {
+    READ: while (my $name = readdir($dh)) {
+      $num++ if $name ne "." && $name ne "..";
+      # should be skip if has file
+      last READ if $num > 0;
+    }
+  };
+  if ($@) {
+    $num = 99; # unknown error
+  }
+  return $num == 0;
+}
+
+sub exec_system {
+  my $cmd     = shift;
+  my $log_out = shift;
+
+  if ($log_out) {
+    return  system_rc(system("$cmd >> $log_out 2>&1"));
+  }
+  else {
+    return system_rc(system($cmd));
+  }
+}
+
+sub exec_cmd_return {
+  my $cmd  = shift;
+  my $res;
+  eval {
+    $res = `$cmd`;
+  };
+  if ($@) {
+    return "Err: $@";
+  }
+  chomp($res);
+  return $res;
+}
+
+sub system_rc {
+  my $rc   = shift;
+  my $high = $rc >> 8;
+  my $low  = $rc & 255;
+  return ($high, $low);
+}
+
+sub is_tcp_port_open {
+  my $host = shift;
+  my $port = shift;
+
+  my $fail = 0;
+  my $socket = IO::Socket::INET->new(
+    PeerAddr => $host,
+    PeerPort => $port,
+    Proto    => "TCP",
+    Timeout  => 2
+  ) || $fail++;
+
+  if ($fail == 0) {
+    return 1;
+  }
+  return 0;
+}
+
+# remove prefix and suffix quote
+sub remove_psquote {
+  my $msg = shift;
+  return undef unless defined $msg;
+  $msg =~ s/^(?:"|')|(?:"|')$//g;
+  return $msg;
+}
+
+my @shell_escape_chars = (
+  '"', '`', '\x27',
+);
+
+sub unescape_for_shell {
+  my $str = shift;
+  if ( !index( $str, '\\\\' ) ) {
+    return $str;
+  }
+  foreach my $c (@shell_escape_chars) {
+    my $x       = quotemeta($c);
+    my $pattern = "\\\\(" . $x . ")";
+    $str =~ s/$pattern/$1/g;
+  }
+  return $str;
+}
+
+sub escape_for_shell {
+  my $str = shift;
+  my $ret = "";
+  foreach my $c ( split //, $str ) {
+    my $x      = $c;
+    my $escape = 0;
+    foreach my $e (@shell_escape_chars) {
+      if ( $e eq $x ) {
+        $escape = 1;
+        last;
+      }
+    }
+    if ( $x eq "'" ) {
+      $x =~ s/'/'\\''/;
+    }
+    if ( $x eq "\\" ) {
+      $x = "\\\\";
+    }
+    if ($escape) {
+      $x = "\\" . $x;
+    }
+    $ret .= "$x";
+  }
+  return $ret;
+}
+
+sub fuzzy_path {
+  my $cmd = shift;
+  $cmd =~ s/ /\ /gi;
+  $cmd =~ s#//#/#gi;
+  return $cmd;
+}
+
+sub get_dir_size {
+  my $dir = shift;
+  return 0 unless -d $dir;
+  my $size = 0;
+  find(sub { $size += -s if -f $_ }, $dir);
+  return $size;
+}
+
+sub get_confd_list {
+  my $dir = shift;
+  return undef unless -d $dir;
+  my @lists;
+  find(
+   sub {
+     return unless -f;
+     return unless /\.(?:cnf|conf|json|ini|yaml)$/i;
+     push @lists, $File::Find::name;
+   }, 
+   $dir
+  );
+  return @lists;
+}
+
+sub current_time {
+  my $zone = shift || "Asia/Shanghai";
+  local $ENV{TZ} = "$zone" if defined $zone;
+  return strftime("%Y-%m-%d 00:00:00", localtime(time));
+}
+
+sub time_print {
+  my $msg  = shift;
+
+  my $timestr = 
+        strftime("%Y-%m-%d %H:%M:%S", localtime(time));
+
+  foreach my $k (split(/\n/, $msg)) {
+    next if $k eq '';
+    print "[$timestr] $k\n";
+  }
+}
+
+sub parsecfg {
+  # check the file
+  my $file = shift;
+  unless (-f $file) {
+    time_print("no file or file is not exist");
+    return undef;
+  }
+
+  # slurp in the file
+  local $/ = undef;
+  open CFG, '<', $file or croak "open $file error: $!";
+  my $contents = <CFG>;
+  close CFG;
+
+  return _read_string($contents);
+}
+
+sub _read_string {
+  return undef unless defined $_[0];
+
+  # Parse the file
+  my %outs;
+  my $ns      = '_';
+  my $counter = 0;
+  foreach (split /(?:\015{1,2}\012|\015|\012)/, shift) {
+    $counter++;
+
+    # Skip comments and empty lines
+    next if /^\s*(?:\#|\;|$)/;
+
+    # Remove inline comments
+    s/\s\;\s.+$//g;
+
+    # Handle section headers
+    if ( /^\s*\[\s*(.+?)\s*\]\s*$/ ) {
+      # Create the sub-hash if it doesn't exist.
+      # Without this sections without keys will not
+      # appear at all in the completed struct.
+      $outs{$ns = $1} ||= {};
+      next;
+    }
+
+    # Handle properties
+    if ( /^\s*([^=]+?)\s*=\s*(.*?)\s*$/ ) {
+      $outs{$ns}->{$1} = $2;
+      next;
+    }
+  }
+  return \%outs;
+}
+
+1;
+
+# ########################################################
+# Disconf packages
+# ########################################################
+package Disconf;
+use strict;
+use warnings FATAL => 'all';
+use English qw(-no_match_vars);  # Avoids regex performance penalty
+use Utils;
+
+sub new {
+  my ($class, %args) = @_;
+  my $self = {};
+  $self->{update} = $args{update} || 0;
+  return bless $self, $class;
+}
+
+sub is_support {
+  my $self = shift;
+  my $type = shift;
+
+  my @lists = qw(memcached redis pika mysql mongodb);
+  foreach my $k (@lists) {
+    return 1 if $k eq $type;
+  }
+  return 0;
+}
+
+sub is_update {
+  my $self = shift;
+  if ($self->{update}) {
+    return 1;
+  }
+  return 0;
+}
+
+sub is_in_list {
+  my $self = shift;
+  my $ref  = shift;
+  my $port = shift;
+
+  foreach my $k (keys %$ref) {
+    return 1 if $ref->{$k} == $port;
+  }
+  return 0;
+}
+
+sub get_listen_ports {
+  my $self = shift;
+
+  # we should convert programname to support type
+  my %maps = (
+    "memcached"    => "memcached",
+    "redis-server" => "redis",
+    "mongod"       => "mongodb",
+    "mysqld"       => "mysql",
+    "pika"         => "pika",
+  );
+
+  my %results;
+  my $res = Utils::exec_cmd_return("netstat -tnlpW | awk '{print \$4, \$NF}'");
+  return undef if $res =~ /^Err/;
+
+  foreach my $k (split(/\n/, $res)) {
+    # filter non-db program
+    next unless $k =~ m/(?:mysqld|memcached|redis-server|mongod|pika)/i;
+   
+    local $_ = $k;
+    if (m#.+:(\d+)\s+(\d+)/(.+)#i) {
+      my $t = $maps{$3};
+      next unless defined $t;
+      $results{$t}->{$2} = undef unless defined $results{$t};
+      next if (defined $results{$t}->{$2} && $results{$t}->{$2} =~ /\b$1\b/i);
+      unless (defined $results{$t}->{$2}) {
+        $results{$t}->{$2} = $1;
+      }
+      if (defined $results{$t}->{$2} 
+           && $results{$t}->{$2} > $1) {
+        $results{$t}->{$2} = $1;
+      }
+    }
+  }
+
+  return \%results;
+}
+
+sub _replace_memcached {
+  my $temp  = shift;
+  my $items = shift;
+
+  my @servers;
+  foreach my $k (@$items) {
+    my $port = $k->{port};
+    push @servers, '"' . '$IP' . ":" . $port . '"';
+  }
+
+  return undef if @servers == 0;
+
+  my $out = join(", ", @servers);
+  $temp =~ s/{{instances}}/$out/g;
+
+  return $temp;
+}
+
+sub disc_memcached {
+  my $self  = shift;
+  my $items = shift;
+
+  my $temp = <<'TEMP_END';
+# Read metrics from one or many memcached servers
+[[inputs.memcached]]
+  ## An array of address to gather stats about. Specify an ip on hostname
+  ## with optional port. ie localhost, 10.0.0.1:11211, etc.
+  servers = [{{instances}}]
+  # unix_sockets = ["/var/run/memcached.sock"]
+TEMP_END
+
+  return _replace_memcached($temp, $items);
+}
+
+sub _replace_mysql {
+  my $temp  = shift;
+  my $items = shift;
+
+  my @servers;
+  foreach my $k (@$items) {
+    my $port = $k->{port};
+    my $user = $k->{user};
+    my $pass = $k->{pass};
+
+    next if (!(defined $user) or !(defined $pass));
+
+    my $dsn  = '"'
+             . "$user" . ":" . "$pass"
+             . '@' . "tcp"
+             . "(" . '$IP' . ":" . "$port" . ")"
+             . "/information_schema?tls=false"
+             . '"';
+    push @servers, $dsn;
+  }
+  
+  return undef if @servers == 0;
+
+  my $out = join(", ", @servers);
+  $temp =~ s/{{instances}}/$out/g;
+
+  return $temp;
+}
+
+sub disc_mysql {
+  my $self  = shift;
+  my $items = shift;
+
+  my $temp = <<'TEMP_END';
+# Read metrics from one or many mysql servers
+[[inputs.mysql]]
+  ## specify servers via a url matching:
+  ##  [username[:password]@][protocol[(address)]]/[?tls=[true|false|skip-verify|custom]]
+  ##  see https://github.com/go-sql-driver/mysql#dsn-data-source-name
+  ##  e.g.
+  ##    servers = ["user:passwd@tcp(127.0.0.1:3306)/?tls=false"]
+  ##    servers = ["user@tcp(127.0.0.1:3306)/?tls=false"]
+  #
+  ## If no servers are specified, then localhost is used as the host.
+  servers = [{{instances}}]
+
+  ## Selects the metric output format.
+  ##
+  ## This option exists to maintain backwards compatibility, if you have
+  ## existing metrics do not set or change this value until you are ready to
+  ## migrate to the new format.
+  ##
+  ## If you do not have existing metrics from this plugin set to the latest
+  ## version.
+  ##
+  ## Telegraf >=1.6: metric_version = 2
+  ##           <1.6: metric_version = 1 (or unset)
+  metric_version = 2
+
+  ## if the list is empty, then metrics are gathered from all database tables
+  # table_schema_databases = []
+
+  ## gather metrics from INFORMATION_SCHEMA.TABLES for databases provided above list
+  # gather_table_schema = false
+
+  ## gather thread state counts from INFORMATION_SCHEMA.PROCESSLIST
+  gather_process_list = true
+
+  ## gather user statistics from INFORMATION_SCHEMA.USER_STATISTICS
+  gather_user_statistics = true
+
+  ## gather auto_increment columns and max values from information schema
+  # gather_info_schema_auto_inc = false
+
+  ## gather metrics from INFORMATION_SCHEMA.INNODB_METRICS
+  gather_innodb_metrics = true
+
+  ## gather metrics from SHOW SLAVE STATUS command output
+  gather_slave_status = true
+
+  ## gather metrics from SHOW BINARY LOGS command output
+  gather_binary_logs = true
+
+  ## gather metrics from PERFORMANCE_SCHEMA.GLOBAL_VARIABLES
+  gather_global_variables = true
+
+  ## gather metrics from PERFORMANCE_SCHEMA.TABLE_IO_WAITS_SUMMARY_BY_TABLE
+  gather_table_io_waits = false
+
+  ## gather metrics from PERFORMANCE_SCHEMA.TABLE_LOCK_WAITS
+  gather_table_lock_waits = false
+
+  ## gather metrics from PERFORMANCE_SCHEMA.TABLE_IO_WAITS_SUMMARY_BY_INDEX_USAGE
+  gather_index_io_waits = false
+
+  ## gather metrics from PERFORMANCE_SCHEMA.EVENT_WAITS
+  gather_event_waits = false
+
+  ## gather metrics from PERFORMANCE_SCHEMA.FILE_SUMMARY_BY_EVENT_NAME
+  gather_file_events_stats = false
+
+  ## gather metrics from PERFORMANCE_SCHEMA.EVENTS_STATEMENTS_SUMMARY_BY_DIGEST
+  gather_perf_events_statements = false
+
+  ## the limits for metrics form perf_events_statements
+  # perf_events_statements_digest_text_limit = 120
+  # perf_events_statements_limit = 250
+  # perf_events_statements_time_limit = 86400
+
+  ## gather metrics from PERFORMANCE_SCHEMA.EVENTS_STATEMENTS_SUMMARY_BY_ACCOUNT_BY_EVENT_NAME
+  # gather_perf_sum_per_acc_per_event         = false
+
+  ## list of events to be gathered for gather_perf_sum_per_acc_per_event
+  ## in case of empty list all events will be gathered
+  # perf_summary_events                       = []
+
+  ## Some queries we may want to run less often (such as SHOW GLOBAL VARIABLES)
+  ##   example: interval_slow = "30m"
+  interval_slow = "1m"
+TEMP_END
+
+  return _replace_mysql($temp, $items);
+}
+
+sub _replace_mongodb {
+  my $temp  = shift;
+  my $items = shift;
+
+  my @servers;
+  foreach my $k (@$items) {
+    my $port = $k->{port};
+    my $user = $k->{user};
+    my $pass = $k->{pass};
+
+    my $dsn;
+    if (defined $user and defined $pass) {
+      $dsn = '"'
+           . "mongodb://"
+           . "$user" . ":" . "$pass"
+           . '@'
+           . '$IP' . ":" . "$port"
+           . '"';
+    }
+    else {
+      $dsn = '"'
+           . "mongodb://"
+           . '$IP' . ":" . "$port"
+           . '"';
+    }
+
+    push @servers, $dsn;
+  }
+
+  return undef if @servers == 0;
+
+  my $out = join(", ", @servers);
+  $temp =~ s/{{instances}}/$out/g;
+
+  return $temp;
+}
+
+sub disc_mongodb {
+  my $self  = shift;
+  my $items = shift;
+
+  my $temp = <<'TEMP_END';
+# Read metrics from one or many MongoDB servers
+[[inputs.mongodb]]
+  ## An array of URLs of the form:
+  ##   "mongodb://" [user ":" pass "@"] host [ ":" port]
+  ## For example:
+  ##   mongodb://user:auth_key@10.10.3.30:27017,
+  ##   mongodb://10.10.3.33:18832,
+  servers = [{{instances}}]
+
+  ## When true, collect cluster status
+  ## Note that the query that counts jumbo chunks triggers a COLLSCAN, which
+  ## may have an impact on performance.
+  # gather_cluster_status = true
+
+  ## When true, collect per database stats
+  # gather_perdb_stats = false
+
+  ## When true, collect per collection stats
+  # gather_col_stats = false
+
+  ## List of db where collections stats are collected
+  ## If empty, all db are concerned
+  # col_stats_dbs = ["local"]
+
+  ## Optional TLS Config
+  # tls_ca = "/etc/telegraf/ca.pem"
+  # tls_cert = "/etc/telegraf/cert.pem"
+  # tls_key = "/etc/telegraf/key.pem"
+  ## Use TLS but skip chain & host verification
+  # insecure_skip_verify = false
+TEMP_END
+
+  return _replace_mongodb($temp, $items);
+}
+
+sub _replace_redis {
+  my $temp  = shift;
+  my $items = shift;
+
+  my @servers;
+  foreach my $k (@$items) {
+    my $port = $k->{port};
+    my $pass = $k->{pass};
+
+    my $dsn;
+    if (defined $pass) {
+      $dsn = '"'
+           . "tcp://"
+           . ":" . "$pass" . '@'
+           . '$IP' . ":" . "$port"
+           . '"';
+    }
+    else {
+      $dsn = '"'
+           . "tcp://"
+           . '$IP' . ":" . "$port"
+           . '"';
+    }
+
+    push @servers, $dsn;
+  }
+
+  return undef if @servers == 0;
+
+  my $out = join(", ", @servers);
+  $temp =~ s/{{instances}}/$out/g;
+
+  return $temp;
+}
+
+sub disc_redis {
+  my $self  = shift;
+  my $items = shift;
+
+  my $temp = <<'TEMP_END';
+# Read metrics from one or many redis servers
+[[inputs.redis]]
+  ## specify servers via a url matching:
+  ##  [protocol://][:password]@address[:port]
+  ##  e.g.
+  ##    tcp://localhost:6379
+  ##    tcp://:password@192.168.99.100
+  ##    unix:///var/run/redis.sock
+  ##
+  ## If no servers are specified, then localhost is used as the host.
+  ## If no port is specified, 6379 is used
+  servers = [{{instances}}]
+
+  ## Optional. Specify redis commands to retrieve values
+  # [[inputs.redis.commands]]
+  # command = ["get", "sample-key"]
+  # field = "sample-key-value"
+  # type = "string"
+
+  ## specify server password
+  # password = "s#cr@t%"
+
+  ## Optional TLS Config
+  # tls_ca = "/etc/telegraf/ca.pem"
+  # tls_cert = "/etc/telegraf/cert.pem"
+  # tls_key = "/etc/telegraf/key.pem"
+  ## Use TLS but skip chain & host verification
+  # insecure_skip_verify = true
+TEMP_END
+
+  return _replace_redis($temp, $items);
+}
+
+sub _replace_pika {
+  my $temp  = shift;
+  my $items = shift;
+
+  my @servers;
+  foreach my $k (@$items) {
+    my $port = $k->{port};
+    my $pass = $k->{pass};
+
+    my $dsn;
+    if (defined $pass) {
+      $dsn = '"'
+           . "tcp://"
+           . ":" . "$pass" . '@'
+           . '$IP' . ":" . "$port"
+           . '"';
+    }
+    else {
+      $dsn = '"'
+           . "tcp://"
+           . '$IP' . ":" . "$port"
+           . '"';
+    }
+
+    push @servers, $dsn;
+  }
+
+  return undef if @servers == 0;
+
+  my $out = join(", ", @servers);
+  $temp =~ s/{{instances}}/$out/g;
+
+  return $temp;
+}
+
+sub disc_pika {
+  my $self  = shift;
+  my $items = shift;
+
+  my $temp = <<'TEMP_END';
+# Read pika's basic status information
+[[inputs.pika]]
+  ## specify servers via a url matching:
+  ##  [protocol://][:password]@address[:port]
+  ##  e.g.
+  ##    tcp://localhost:9221
+  ##    tcp://:password@192.168.99.100
+  ##
+  ## If no servers are specified, then localhost is used as the host.
+  ## If no port is specified, 9221 is used
+  servers = [{{instances}}]
+  ## Optional. Specify redis commands to retrieve values
+  # [[inputs.pika.commands]]
+  # command = ["get", "sample-key"]
+  # field = "sample-key-value"
+  # type = "string"
+
+  ## specify server password
+  # password = "s#cr@t%"
+
+  ## Optional TLS Config
+  # tls_ca = "/etc/telegraf/ca.pem"
+  # tls_cert = "/etc/telegraf/cert.pem"
+  # tls_key = "/etc/telegraf/key.pem"
+  ## Use TLS but skip chain & host verification
+  # insecure_skip_verify = true
+TEMP_END
+
+  return _replace_pika($temp, $items);
+}
+
+sub temp_outs {
+  my $self  = shift;
+  my $type  = shift;
+  my $items = shift;
+
+  
+  my %select_func = (
+    'memcached' => $self->disc_memcached($items),
+    'mysql'     => $self->disc_mysql($items),
+    'mongodb'   => $self->disc_mongodb($items),
+    'redis'     => $self->disc_redis($items),
+    'pika'      => $self->disc_pika($items),
+  );
+
+  return $select_func{$type};
+}
+
+sub gen_conf_by_type {
+  my $self   = shift;
+  my $confd  = shift;
+  my $type   = shift;
+  my $res    = shift;
+  my $secs   = shift;
+
+  return undef unless $self->is_support($type);
+
+  my @items;
+  my @ports;
+  foreach my $p (keys %$res) {
+    my $port = $res->{$p};
+    my $user = $secs->{user} || undef;
+    my $pass = $secs->{$port} || $secs->{pass} || undef;
+
+    push @ports, $port;
+    push @items, {port => $port, user => $user, pass => $pass};
+  }
+
+  # create conf file
+  $confd  .= "/" unless $confd =~ m|/$|i;
+  my $cnf = $confd . "$type" . "-" . "auto" . ".conf";
+
+  # get current monitor port list and compare
+  my @cur_ports = _get_monitor_ports($type, $cnf);
+  my $comp_diff = _ports_compare(\@ports, \@cur_ports);
+
+  my $counter = @{$comp_diff->{add}} + @{$comp_diff->{del}};
+  if ($counter > 0) {
+    _diff_print($type, $comp_diff);
+    if ($self->is_update()) {
+      my $outs = $self->temp_outs($type, \@items);
+      # force overwrite cnf file
+      if (Utils::create_cnf_if($cnf, $outs, 1)) {
+        Utils::time_print("generate $cnf ok.");
+      }
+    }
+  }
+
+  return $counter;
+}
+
+sub _parse_ports {
+  my $line = shift;
+  my @servers = ($line =~ m/\$IP:(\d+)/gi);
+  return @servers;
+}
+
+sub _get_monitor_ports {
+  my $type = shift;
+  my $conf = shift;
+
+  return () unless -e $conf;
+
+  open my $fh, '<', $conf or return undef;
+
+  my $fetch;
+  while(<$fh>) {
+    chomp;
+    if (/^\s*servers\s*=/i) {
+      $fetch = $_;
+      last;
+    }
+  }
+  close $fh;
+
+  return () unless defined $fetch;
+  return _parse_ports($fetch);
+}
+
+sub _diff_print {
+  my $type = shift;
+  my $diff = shift;
+  foreach my $t (keys %$diff) {
+    next unless defined $diff->{$t}->[0];
+    my $list = join(", ", @{$diff->{$t}});
+    Utils::time_print("will $t $type:  $list")
+  }
+}
+
+sub _is_in_array {
+  my $port = shift;
+  my $ref  = shift;
+
+  return 0 unless defined $ref;
+
+  foreach my $k (@$ref) {
+    return 1 if $k == $port;
+  }
+  return 0;
+}
+
+sub _ports_compare {
+  my $r1 = shift;
+  my $r2 = shift;
+
+  my %diff = (
+    add => [],
+    del => [],
+  );
+
+  return \%diff if (!defined $r1 && !defined $r2);
+
+  foreach my $k (@$r1) {
+    push @{$diff{add}}, $k unless _is_in_array($k, $r2);
+  }
+  foreach my $k (@$r2) {
+    push @{$diff{del}}, $k unless _is_in_array($k, $r1);
+  }
+
+  return \%diff;
+}
+
+1;
