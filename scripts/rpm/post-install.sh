@@ -102,23 +102,26 @@ get_one_ip() {
   '
 }
 
-# change telegraf.conf IP
+# change telegraf default tag
 if [[ -f /etc/telegraf/telegraf.conf ]]; then
-  IP=$(get_one_ip)
-  IP="${IP:-"NULL"}"
   sed -i "s/{{IP}}/$IP/" /etc/telegraf/telegraf.conf
 fi
 
 # Add defaults file, if it doesn't exist
 if [[ ! -f /etc/default/telegraf ]]; then
-    touch /etc/default/telegraf
-    cat <<EOF >> /etc/default/telegraf
+  touch /etc/default/telegraf
+fi
+
+if [[ -f /etc/default/telegraf ]]; then
+  IP=$(get_one_ip)
+  IP="${IP:-"NULL"}"
+  cat <<EOF >> /etc/default/telegraf
 DC="NULL"
 MARK="NULL"
 TEAM="NULL"
+IP="$IP"
 EOF
 fi
-
 # Add more default input conf
 if [[ -d /etc/telegraf/telegraf.d ]]; then
   # add ntpdate check

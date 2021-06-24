@@ -36,8 +36,9 @@ main() {
       -d)       shift; OPT_DC="$1";      shift;  ;;
       -m)       shift; OPT_MARK="$1";    shift;  ;;
       -t)       shift; OPT_TEAM="$1";    shift;  ;;
-      -1)       shift; OPT_SERVER1="$1"; shift; ;;
-      -2)       shift; OPT_SERVER2="$1"; shift; ;;
+      -n)       shift; OPT_NET="$1";     shift;  ;;
+      -1)       shift; OPT_SERVER1="$1"; shift;  ;;
+      -2)       shift; OPT_SERVER2="$1"; shift;  ;;
       -v)       grep -A2 '^=head1 VERSION' "$0" | tail -n1; exit 0 ;;
       -h)       perl -00 -ne 'm/^\s+Usage:/ && print' "$0"; exit 0 ;;
       -*)       echo "Unknown option ${o}. Try -h."; exit 1; ;;
@@ -47,6 +48,7 @@ main() {
   OPT_DC="${OPT_DC:-"NULL"}"
   OPT_MARK="${OPT_MARK:-"NULL"}"
   OPT_TEAM="${OPT_TEAM:-"NULL"}"
+  OPT_NET="${OPT_NET:-"NULL"}"
   OPT_SERVER1="${OPT_SERVER1:-"NULL"}"
   OPT_SERVER2="${OPT_SERVER2:-"NULL"}"
 
@@ -61,11 +63,15 @@ main() {
     error "must set servers"
   fi
 
+
+  IP=$(get_one_ip $OPT_NET)
+  IP="${IP:-"NULL"}"
   # overwrite or touch /etc/default/telegraf
   cat <<EOF > /etc/default/telegraf
 DC="$OPT_DC"
 MARK="$OPT_MARK"
 TEAM="$OPT_TEAM"
+IP="$IP"
 EOF
 
   if [[ "$?" -eq 0 ]]; then
@@ -126,6 +132,74 @@ verify_servers() {
     '
 }
 
+get_one_ip() {
+  export local_net="$1"
+
+  ifconfig -a | \
+     perl -ne '
+      BEGIN {
+        sub ip_int {
+          my $ip = shift;
+          return 0 unless defined $ip;
+          my $ipint = 0;
+          my $i = 3;
+          foreach ( $ip =~ /\d+/g) {
+            $ipint += ($_ << (8*$i--));
+          }
+         
+          return $ipint;
+        }
+    
+        # internal ip range
+        sub is_in_privite {
+          my $ipint = shift;
+         
+          if (($ipint >= 167772160 && $ipint <= 184549375)
+             || ($ipint >= 2886729728 && $ipint <= 2887778303)
+             || ($ipint >= 3232235520 && $ipint <= 3232301055)) {
+            return 1;
+          }
+          else {
+            return 0;
+          }
+        }
+    
+        my @ips;
+      };
+    
+      chomp;
+      next unless grep(/inet\b/, $_);
+      my $ip;
+      if (m/\s*inet\s+(?:addr:|)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+/) {
+        $ip = $1;
+      }
+      if (is_in_privite(ip_int($ip))) {
+        push @ips, $ip;
+      }
+    
+      END {
+        my $net = $ENV{local_net} || undef;
+        if (@ips + 0 > 0) {
+          if (defined $net && $net ne "NULL") {
+            my @ns = grep(/$net/, @ips);
+            if (@ns + 0 > 0) {
+              print $ns[0] . "\n";
+            }
+            else {
+              print $ips[0] . "\n";
+            }
+          }
+          else {
+            print $ips[0] . "\n";
+          }
+        }
+        else {
+          print "\n";
+        }
+      }
+  '
+}
+
 is_sourced() {
   [ "${0##*/}" = "telegraf-prepare" ] || [ "${0##/}" = "bash" -a "$_" = "$0" ]
 }
@@ -148,15 +222,17 @@ telegraf-prepare - set the global tags and graphite servers for the telegraf set
 
   Usage: telegraf-tags [OPTIONS]
   OPTION:
-    -d set the WMDC tag, default is NULL.
-    -m set the WMMARK tag, default is NULL.
-    -t set the WMTEAM tag, default is NULL.
+    -d set the DC tag, default is NULL.
+    -m set the MARK tag, default is NULL.
+    -t set the TEAM tag, default is NULL.
+    -n filter net address if host have multiple ip address.
     -l graphite server 1, must set avalid ip address.
     -2 graphite server 2, must set avalid ip address.
     -v print version message.
     -h print help message.
   eg:
     telegraf-tags -d beijing -m test -t sre -1 server1 -2 server2
+    telegraf-tags -d beijing -m test -t sre -1 server1 -2 server2 -n 10.1.0
   note: telegraf-tags will change the file /etc/default/telegraf.
 
 
