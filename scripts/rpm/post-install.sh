@@ -1,4 +1,4 @@
-#!abin/bash
+#!/bin/bash
 
 BIN_DIR=/usr/bin
 LOG_DIR=/var/log/telegraf
