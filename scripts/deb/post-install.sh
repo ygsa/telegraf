@@ -46,7 +46,10 @@ fi
 # If 'telegraf.conf' is not present use package's sample (fresh install)
 if [[ ! -f /etc/telegraf/telegraf.conf ]] && [[ -f /etc/telegraf/telegraf.conf.sample ]]; then
    cp /etc/telegraf/telegraf.conf.sample /etc/telegraf/telegraf.conf
-   touch /etc/telegraf/discovery.conf
+fi
+
+if [[ -d /etc/telegraf ]]; then
+   touch /etc/telegraf/discover.conf
 fi
 
 get_one_ip() {
