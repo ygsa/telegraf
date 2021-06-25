@@ -93,7 +93,21 @@ unless (defined $results) {
 
 my $is_trigger = 0;
 
-# generate sub conf file by type
+# ensure telegraf process is running, conf maybe changed 
+# but not restart service
+my $is_alive = $disconf->is_telegraf_alive();
+if ($is_alive) {
+  Utils::time_print("ok - telegraf is running");
+  if ($disconf->is_telegraf_conf_change($conf)) {
+    Utils::time_print("warn - conf was changed but not restart telegraf!");
+    $is_trigger++;
+  }
+}
+else {
+  Utils::time_print("error - telegraf is not running");
+}
+
+# detect and generate sub conf file by type
 foreach my $type (keys %$results) {
   next unless $disconf->is_support($type);
 
@@ -111,24 +125,20 @@ if ($is_trigger > 0) {
   if ($update) {
     my $cmd = "service telegraf restart";
     my($high, $low) = Utils::exec_system("$cmd");
+    sleep 1; # wait a moment
+
     if ($high != 0 || $low != 0) {
       Utils::time_print("error - $cmd execute error! high: $high, low: $low");
     }
     else {
-      Utils::time_print("ok - $cmd execute ok.");
+      if ($disconf->is_telegraf_alive()) {
+        Utils::time_print("ok - $cmd execute ok, and process is running!");
+      }
+      else {
+        Utils::time_print("error - $cmd execute ok, but process is not running!");
+      }
     }
-    sleep 1; # wait a moment
   }
-}
-
-# ensure telegraf process is running
-my $pid = Utils::exec_cmd_return("pidof telegraf");
-my $is_alive = kill 0, $pid;
-if ($is_alive) {
-  Utils::time_print("ok - telegraf is running");
-}
-else {
-  Utils::time_print("error - telegraf is not running");
 }
 
 =head1 AUTHOR
@@ -153,8 +163,10 @@ use English qw(-no_match_vars);
 use POSIX qw(strftime);
 use File::Path;
 use File::Find;
+use File::Basename;
 use IO::Socket::INET;
 use Carp;
+use Data::Dumper;
 
 use vars qw($VERSION);
 our $VERSION = '0.10';
@@ -340,7 +352,9 @@ sub get_dir_size {
 
 sub get_confd_list {
   my $dir = shift;
+  $dir = dirname($dir) if -f $dir;
   return undef unless -d $dir;
+
   my @lists;
   find(
    sub {
@@ -467,6 +481,48 @@ sub is_in_list {
   foreach my $k (keys %$ref) {
     return 1 if $ref->{$k} == $port;
   }
+  return 0;
+}
+
+sub is_telegraf_alive {
+  my $self = shift;
+
+  my $pid  = Utils::exec_cmd_return("pidof telegraf");
+  my $is_alive = kill 0, $pid;
+
+  return $is_alive;
+}
+
+sub _get_file_mtime {
+  my $file = shift;
+
+  return 0 unless -e $file;
+  my $mtime = (stat($file))[9];
+
+  return $mtime;
+}
+
+sub _get_telegraf_stime {
+  my $pid  = Utils::exec_cmd_return("pidof telegraf");
+  my $file = "/proc/$pid/cmdline";
+
+  return _get_file_mtime($file);
+}
+
+sub is_telegraf_conf_change {
+  my $self = shift;
+  my $path = shift;
+
+  my $teletime  = _get_telegraf_stime();
+
+  my @cnfs      = Utils::get_confd_list($path);
+  foreach my $k (@cnfs) {
+    next if $k =~ /discovery/i;
+
+    my $ft = _get_file_mtime($k);
+    return 1 if $ft > $teletime;
+  }
+
   return 0;
 }
 
