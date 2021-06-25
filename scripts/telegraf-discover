@@ -14,7 +14,7 @@
     confd:   telegraf configure directory, default is
                 /etc/telegraf/telegraf.d;
     disf:    ini style configure file to store db user and pass, 
-                default is /etc/telegraf/discovery.conf;
+                default is /etc/telegraf/discover.conf;
     update:  whether generate sub configure file or not,
                 default is /etc/telegraf/telegraf.d/<db>-auto.conf;
     verbose: print more messages.
@@ -23,7 +23,7 @@
     the sample of the `disf` file, multiple database maybe running in 
     one host, we'll inherit default pass if not set instance pass:
 
-      # /etc/telegraf/discovery.conf
+      # /etc/telegraf/discover.conf
       [mysql]
       user=monitor  # can not change by instance
       pass=xxxxxx   # default pass
@@ -57,7 +57,7 @@ BEGIN {
 my($update,$verbose,$help);
 my $conf  = "/etc/telegraf/telegraf.conf";
 my $confd = "/etc/telegraf/telegraf.d";
-my $disf  = "/etc/telegraf/discovery.conf";
+my $disf  = "/etc/telegraf/discover.conf";
 
 GetOptions(
   "conf=s"   => \$conf,
@@ -517,7 +517,7 @@ sub is_telegraf_conf_change {
 
   my @cnfs      = Utils::get_confd_list($path);
   foreach my $k (@cnfs) {
-    next if $k =~ /discovery/i;
+    next if $k =~ /discover/i;
 
     my $ft = _get_file_mtime($k);
     return 1 if $ft > $teletime;
