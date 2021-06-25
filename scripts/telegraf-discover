@@ -29,11 +29,14 @@
       pass=xxxxxx   # default pass
       3306=111111   # pass for 3306 port
       3307=222222   # pass for 3307 port
+      ignore=3301,3303 # ignore 3301 and 3303 port
 
       [redis]
+      default=xxxxx # default pass
       6379=xxxxx    # pass for 6379 port
 
       [memcached]
+      ignore=11212
 
      Note: 
        Currently only the following types are supported:
@@ -972,8 +975,12 @@ sub gen_conf_by_type {
 
   my @items;
   my @ports;
+
+  my @ignore_ports = split(/,\s*/, $secs->{ignore} || '');
   foreach my $p (keys %$res) {
     my $port = $res->{$p};
+    next if _is_in_array($port, \@ignore_ports);
+
     my $user = $secs->{user} || undef;
     my $pass = $secs->{$port} || $secs->{pass} || undef;
 
@@ -987,7 +994,7 @@ sub gen_conf_by_type {
 
   # get current monitor port list and compare
   my @cur_ports = _get_monitor_ports($type, $cnf);
-  my $comp_diff = _ports_compare(\@ports, \@cur_ports);
+  my $comp_diff = _ports_compare(\@ports, \@cur_ports, \@ignore_ports);
 
   my $counter = @{$comp_diff->{add}} + @{$comp_diff->{del}};
   if ($counter > 0) {
@@ -1057,6 +1064,7 @@ sub _is_in_array {
 sub _ports_compare {
   my $r1 = shift;
   my $r2 = shift;
+  my $no = shift; # ignore list
 
   my %diff = (
     add => [],
@@ -1066,9 +1074,11 @@ sub _ports_compare {
   return \%diff if (!defined $r1 && !defined $r2);
 
   foreach my $k (@$r1) {
+    next if _is_in_array($k, $no);
     push @{$diff{add}}, $k unless _is_in_array($k, $r2);
   }
   foreach my $k (@$r2) {
+    push @{$diff{del}}, $k if _is_in_array($k, $no);
     push @{$diff{del}}, $k unless _is_in_array($k, $r1);
   }
 
