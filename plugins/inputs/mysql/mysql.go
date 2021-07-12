@@ -492,7 +492,7 @@ func (m *Mysql) gatherServer(serv string, acc telegraf.Accumulator) error {
 	if m.GatherBinaryLogs {
 		err = m.gatherBinaryLogs(db, serv, acc)
 		if err != nil {
-			return err
+			m.Log.Warn("I! skip to gather binary logs...")
 		}
 	}
 
@@ -506,7 +506,7 @@ func (m *Mysql) gatherServer(serv string, acc telegraf.Accumulator) error {
 	if m.GatherUserStatistics {
 		err = m.GatherUserStatisticsStatuses(db, serv, acc)
 		if err != nil {
-			return err
+			m.Log.Warn("I! skip to gather user statistics...")
 		}
 	}
 
