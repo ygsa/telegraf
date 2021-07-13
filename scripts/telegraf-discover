@@ -491,6 +491,8 @@ sub is_telegraf_alive {
   my $self = shift;
 
   my $pid  = Utils::exec_cmd_return("pidof telegraf");
+  return 0 if length($pid) == 0;
+
   my $is_alive = kill 0, $pid;
 
   return $is_alive;
