@@ -527,7 +527,7 @@ func (m *Mysql) gatherServer(serv string, acc telegraf.Accumulator) error {
 	if m.GatherInnoDBMetrics {
 		err = m.gatherInnoDBMetrics(db, serv, acc)
 		if err != nil {
-			return err
+			m.Log.Warn("I! skip to gather innodb metrics...")
 		}
 	}
 
