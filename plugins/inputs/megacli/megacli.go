@@ -77,12 +77,12 @@ func (m *Megacli) Init() error {
 		if !fileExists(m.PathMegacli) {
 			m.Log.Warn("MegaCli is not exist!")
 		}
-	}
-
-	m.PathMegacli, err = exec.LookPath("MegaCli")
-	if err != nil {
-		m.PathMegacli = ""
-		m.Log.Warn("MegaCli not found: verify that MegaCli is installed and that MegaCli is in your PATH")
+	} else
+		m.PathMegacli, err = exec.LookPath("MegaCli")
+		if err != nil {
+			m.PathMegacli = ""
+			m.Log.Warn("MegaCli not found: verify that MegaCli is installed and that MegaCli is in your PATH")
+		}
 	}
 
 	for _, tval := range m.GatherType {
