@@ -32,7 +32,7 @@
       ignore=3301,3303 # ignore 3301 and 3303 port
 
       [redis]
-      default=xxxxx # default pass
+      pass=xxxxx # default pass
       6379=xxxxx    # pass for 6379 port
 
       [memcached]
@@ -544,15 +544,16 @@ sub get_listen_ports {
   );
 
   my %results;
-  my $res = Utils::exec_cmd_return("netstat -tnlpW | awk '{print \$4, \$NF}'");
+  my $res = Utils::exec_cmd_return("netstat -tnlp --inet");
   return undef if $res =~ /^Err/;
 
   foreach my $k (split(/\n/, $res)) {
     # filter non-db program
     next unless $k =~ m/(?:mysqld|memcached|redis-server|mongod|pika)/i;
-   
-    local $_ = $k;
-    if (m#.+:(\d+)\s+(\d+)/(.+)#i) {
+    my @items = split(/\s+/, $k, 7);
+
+    local $_ = "$items[3] $items[-1]";
+    if (m#.+:(\d+)\s+(\d+)/(.+?)(?:\s+|$)#i) {
       my $t = $maps{$3};
       next unless defined $t;
       $results{$t}->{$2} = undef unless defined $results{$t};
@@ -812,7 +813,7 @@ sub _replace_redis {
   my @servers;
   foreach my $k (@$items) {
     my $port = $k->{port};
-    my $pass = $k->{pass};
+    my $pass = _pass_url_encode($k->{pass});
 
     my $dsn;
     if (defined $pass) {
@@ -1085,6 +1086,28 @@ sub _ports_compare {
   }
 
   return \%diff;
+}
+
+sub _pass_url_encode {
+  my $pass  = shift;
+  return $pass unless defined $pass;
+
+  my %metas = (
+    '%' => '%25', '`' => '%60',
+    '^' => '%5e', '$' => '%24',
+    '!' => '%21', '[' => '%5b',
+    ']' => '%5d', '<' => '%3c',
+    '>' => '%3e', '/' => '%2f',
+    '?' => '%3f', '"' => '%22',
+  );
+
+  my $newpass;
+  foreach my $k (split(//, $pass)) {
+    my $str = $metas{$k} || $k;
+    $newpass .= $str;
+  }
+
+  return $newpass;
 }
 
 1;
