@@ -77,7 +77,7 @@ func (m *Megacli) Init() error {
 		if !fileExists(m.PathMegacli) {
 			m.Log.Warn("MegaCli is not exist!")
 		}
-	} else
+	} else {
 		m.PathMegacli, err = exec.LookPath("MegaCli")
 		if err != nil {
 			m.PathMegacli = ""
