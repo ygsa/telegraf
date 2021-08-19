@@ -4,7 +4,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"math/rand"
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/selfstat"
@@ -190,7 +189,6 @@ func (r *RunningOutput) Write() error {
 	}
 
 	atomic.StoreInt64(&r.newMetricsCount, 0)
-	rand.Seed(time.Now().UnixNano())
 
 	// Only process the metrics in the buffer now.  Metrics added while we are
 	// writing will be sent on the next call.
@@ -208,10 +206,6 @@ func (r *RunningOutput) Write() error {
 			return err
 		}
 		r.buffer.Accept(batch)
-
-		// random sleep to avoid traffic issue
-		n := rand.Intn(5) // between 0 and 5
-		time.Sleep(time.Duration(n + 1) * 100 * time.Millisecond)
 	}
 	return nil
 }
