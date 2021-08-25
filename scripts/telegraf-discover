@@ -544,7 +544,7 @@ sub get_listen_ports {
   );
 
   my %results;
-  my $res = Utils::exec_cmd_return("netstat -tnlp --inet");
+  my $res = Utils::exec_cmd_return("netstat -tnlp");
   return undef if $res =~ /^Err/;
 
   foreach my $k (split(/\n/, $res)) {
