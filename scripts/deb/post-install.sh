@@ -132,7 +132,7 @@ if [[ -d /etc/telegraf/telegraf.d ]]; then
 #[[inputs.ntpdate]]
 #  interval = "3600s"
 #  # An array of address to gather stats about. Specify an ip address or domain name.
-#  servers = ["0.centos.pool.ntp.org", "162.159.200.1"]
+#  servers = ["0.centos.pool.ntp.org"]
 #
 #  # Specify the number of samples to be acquired from each server as the integer 
 #  # samples, with values from 1 to 8 inclusive, default is 2. 
@@ -163,10 +163,10 @@ EOF
 #  ## Setting 'use_sudo' to true will make use of sudo to run MegaCli.
 #  ## Sudo must be configured to allow the telegraf user to run MegaCli
 #  ## without a password.
-#  use_sudo = false
+#  use_sudo = true
 #
 #  ## Timeout for the cli command to complete.
-#  timeout = "3s"
+#  timeout = "5s"
 EOF
   fi
 
