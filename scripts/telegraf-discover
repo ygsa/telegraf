@@ -201,6 +201,8 @@ sub create_cnf_if {
     return 0;
   }
 
+  return 1 unless defined $res;
+
   # write res to cnf
   open my $fh, '>', $cnf or carp "open $cnf error: $!";
   return 0 unless defined $fh;
