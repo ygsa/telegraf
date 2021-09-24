@@ -105,6 +105,14 @@ if ($is_alive) {
     Utils::time_print("warn - conf was changed but not restart telegraf!");
     $is_trigger++;
   }
+
+  # detect graphite connection, 
+  # telegraf maybe produce many warning log
+  if ($disconf->is_graphite_connection_abnormal($conf)) {
+    Utils::time_print("warn - graphite connection abnormal, restart telegraf!");
+    $is_trigger++;
+  }
+
 }
 else {
   Utils::time_print("error - telegraf is not running");
@@ -372,6 +380,50 @@ sub get_confd_list {
   return @lists;
 }
 
+sub _parse_server {
+  my $line  = shift;
+  my ($res) = ($line =~ /servers\s*=\s*\[(.+)\]/i);
+
+  return undef unless defined $res;
+  my @servers;
+  foreach my $k (split(/,\s*/, $res)) {
+    $k =~ s/'|"//g;
+    push @servers, $k;
+  }
+
+  return @servers;
+}
+
+sub get_conf_servers {
+  my $keys = shift;
+  my $conf = shift;
+  return undef unless -e $conf;
+
+  my @servers;
+  my $seen = 0;
+  open my $cfg, '<', $conf or croak "open $conf error: $!";
+  while (<$cfg>) {
+    chomp;
+    next if $_ =~ /^\s*#/;
+
+    if ($_ =~ /^\s*\[/) {
+      if ($_ =~ /$keys/) {
+        $seen = 1;
+      }
+      else {
+        $seen = 0;
+      }
+    }
+
+    if ($seen == 1 && $_ =~ /^\s*servers/) {
+      @servers = _parse_server($_);
+      last;
+    }
+  }
+
+  return @servers;
+}
+
 sub current_time {
   my $zone = shift || "Asia/Shanghai";
   local $ENV{TZ} = "$zone" if defined $zone;
@@ -531,6 +583,31 @@ sub is_telegraf_conf_change {
   }
 
   return 0;
+}
+
+sub is_graphite_connection_abnormal {
+  my $self = shift;
+  my $file = shift;
+
+  my @servers = Utils::get_conf_servers("outputs.graphite", $file);
+  my $n = @servers + 0;
+  return 1 if $n == 0;
+
+  my $res = Utils::exec_cmd_return("netstat -ntp");
+  return 1 if $res =~ /^Err/;
+
+  my $m = 0;
+  foreach my $k (@servers) {
+    if ($res =~ /$k\s*ESTABLISHED/i) {
+      $m++
+    }
+  }
+
+  if ($n == $m) {
+    return 0;
+  }
+
+  return 1;
 }
 
 sub get_listen_ports {
