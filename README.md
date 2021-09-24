@@ -66,6 +66,12 @@ Telegraf requires Go version 1.14 or newer, the Makefile requires GNU make.
    make
    ```
 
+### build all dist
+```
+cd src
+make package amd64=1   # will make rpm, deb, tars, zips
+```
+
 ### Changelog
 
 View the [changelog](/CHANGELOG.md) for the latest updates and changes by
