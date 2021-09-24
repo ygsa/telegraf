@@ -104,6 +104,38 @@ func (g *Graphite) Connect() error {
 	return nil
 }
 
+func (g *Graphite) Reconnect(n int, server net.Conn) error {
+	if g.Timeout <= 0 {
+		g.Timeout = 2
+	}
+
+	// Set tls config
+	tlsConfig, err := g.ClientConfig.TLSConfig()
+	if err != nil {
+		return err
+	}
+
+	// Dialer with timeout
+	d := net.Dialer{Timeout: time.Duration(g.Timeout) * time.Second}
+
+	var conn net.Conn
+	if tlsConfig != nil {
+		conn, err = tls.DialWithDialer(&d, "tcp", server.RemoteAddr().String(), tlsConfig)
+	} else {
+		conn, err = d.Dial("tcp", server.RemoteAddr().String())
+	}
+
+	if err == nil {
+		// change conns to new conn
+		g.Log.Error("Graphite: Reconnecting and retrying. Replace the closed connection")
+		g.conns[n] = conn
+	} else {
+		return err
+	}
+
+	return nil
+}
+
 func (g *Graphite) Close() error {
 	// Closing all connections
 	for _, conn := range g.conns {
@@ -191,6 +223,10 @@ func (g *Graphite) send(batch []byte) error {
 			g.Log.Errorf("Graphite Error: " + e.Error())
 			// Close explicitly
 			g.conns[n].Close()
+			// try to reconnect when multiple servers
+			if len(g.conns) > 1  {
+				g.Reconnect(n, g.conns[n])
+			}
 			// Let's try the next one
 		} else {
 			// Success
