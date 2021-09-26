@@ -1066,6 +1066,13 @@ sub gen_conf_by_type {
     my $user = $secs->{user} || undef;
     my $pass = $secs->{$port} || $secs->{pass} || undef;
 
+    if ($type eq 'mysql') {
+      if (!defined($user) || !defined($pass)) {
+        Utils::time_print("ignore $type: $port. must set user and pass for $type");
+	next;
+      }
+    }
+
     push @ports, $port;
     push @items, {port => $port, user => $user, pass => $pass};
   }
