@@ -114,12 +114,15 @@ fi
 if [[ -f /etc/default/telegraf ]]; then
   IP=$(get_one_ip)
   IP="${IP:-"NULL"}"
-  cat <<EOF >> /etc/default/telegraf
+
+  if ! grep -q -P "^IP" /etc/default/telegraf; then
+    cat <<EOF >> /etc/default/telegraf
 DC="NULL"
 MARK="NULL"
 TEAM="NULL"
 IP="$IP"
 EOF
+  fi
 fi
 
 
