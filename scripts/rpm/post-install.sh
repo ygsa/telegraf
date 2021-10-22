@@ -190,32 +190,6 @@ EOF
 EOF
   fi
 
-  # add dns check
-  if [[ ! -f /etc/telegraf/telegraf.d/dns_query.conf ]]; then
-    cat <<EOF >> /etc/telegraf/telegraf.d/dns_query.conf
-## Query given DNS server and gives statistics
-#[[inputs.dns_query]]
-#  ## servers to query
-#  servers = ["1.1.1.1", "8.8.8.8"]
-#
-#  ## Network is the network protocol name.
-#  # network = "udp"
-#
-#  ## Domains or subdomains to query.
-#  # domains = ["www.baidu.com"]
-#
-#  ## Query record type.
-#  ## Possible values: A, AAAA, CNAME, MX, NS, PTR, TXT, SOA, SPF, SRV.
-#  # record_type = "A"
-#
-#  ## Dns server port.
-#  # port = 53
-#
-#  ## Query timeout in seconds.
-#  # timeout = 2
-EOF
-  fi
-
   if [[ ! -f /etc/telegraf/telegraf.d/http_response.conf ]]; then
     cat <<EOF >> /etc/telegraf/telegraf.d/http_response.conf
 ## HTTP/HTTPS request given an address a method and a timeout
