@@ -85,7 +85,7 @@ Utils::create_dir_if("$confd")
   or croak "create $confd error and $confd is not exist";
 
 my $disconf = Disconf->new( (update => $update) );
-my $results = $disconf->get_listen_ports();
+my $results = $disconf->get_server_list();
 my $sects   = Utils::parsecfg($disf);
 $| = 1; # enforce flush for print
 
@@ -118,15 +118,27 @@ else {
   Utils::time_print("error - telegraf is not running");
 }
 
-# detect and generate sub conf file by type
-foreach my $type (keys %$results) {
+# detect and generate sub conf file for listen service
+foreach my $type (keys %{$results->{listen}}) {
   next unless $disconf->is_support($type);
 
-  my $i = $disconf->gen_conf_by_type(
+  my $i = $disconf->gen_conf_for_listen(
             $confd, $type,
-            $results->{$type}, 
-            $sects->{$type}
+            $results->{listen}->{$type}, 
+            $sects->{$type},
           );
+  $is_trigger += $i;
+}
+
+# detect and generate sub conf file for non_listen service
+foreach my $type (keys %{$results->{non_listen}}) {
+  next unless $disconf->is_support($type);
+
+  my $i = $disconf->gen_conf_for_non_listen(
+            $confd, $type,
+            $sects->{$type},
+  );
+
   $is_trigger += $i;
 }
 
@@ -515,7 +527,7 @@ sub is_support {
   my $self = shift;
   my $type = shift;
 
-  my @lists = qw(memcached redis pika mysql mongodb);
+  my @lists = qw(memcached redis pika mysql mongodb dns_query);
   foreach my $k (@lists) {
     return 1 if $k eq $type;
   }
@@ -585,6 +597,27 @@ sub is_telegraf_conf_change {
   return 0;
 }
 
+sub _get_host_ip {
+  my $host = shift;
+  my $ip = $host;
+
+  if ($host =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/) {
+    $ip = $host;
+  }
+  else {
+    use Socket;
+    my $temp = gethostbyname($host);
+    if (defined $temp) {
+      $ip = inet_ntoa($temp);
+    }
+    else {
+      $ip = $host;
+    }
+  }
+
+  return $ip;
+}
+
 sub is_graphite_connection_abnormal {
   my $self = shift;
   my $file = shift;
@@ -598,7 +631,9 @@ sub is_graphite_connection_abnormal {
 
   my $m = 0;
   foreach my $k (@servers) {
-    if ($res =~ /$k\s*ESTABLISHED/i) {
+    my ($host, $port) = split(/:/, $k);
+    my $ip = _get_host_ip($host);
+    if ($res =~ /$ip:$port\s*ESTABLISHED/i) {
       $m++
     }
   }
@@ -610,7 +645,7 @@ sub is_graphite_connection_abnormal {
   return 1;
 }
 
-sub get_listen_ports {
+sub get_server_list {
   my $self = shift;
 
   # we should convert programname to support type
@@ -622,7 +657,11 @@ sub get_listen_ports {
     "pika"         => "pika",
   );
 
+  # full lists
   my %results;
+
+  # listen port lists
+  my %listens;
   my $res = Utils::exec_cmd_return("netstat -tnlp");
   return undef if $res =~ /^Err/;
 
@@ -635,19 +674,94 @@ sub get_listen_ports {
     if (m#.+:(\d+)\s+(\d+)/(.+?)(?:\s+|$)#i) {
       my $t = $maps{$3};
       next unless defined $t;
-      $results{$t}->{$2} = undef unless defined $results{$t};
-      next if (defined $results{$t}->{$2} && $results{$t}->{$2} =~ /\b$1\b/i);
-      unless (defined $results{$t}->{$2}) {
-        $results{$t}->{$2} = $1;
+      $listens{$t}->{$2} = undef unless defined $listens{$t};
+      next if (defined $listens{$t}->{$2} && $listens{$t}->{$2} =~ /\b$1\b/i);
+      unless (defined $listens{$t}->{$2}) {
+        $listens{$t}->{$2} = $1;
       }
-      if (defined $results{$t}->{$2} 
-           && $results{$t}->{$2} > $1) {
-        $results{$t}->{$2} = $1;
+      if (defined $listens{$t}->{$2} 
+           && $listens{$t}->{$2} > $1) {
+        $listens{$t}->{$2} = $1;
       }
     }
   }
 
+  $results{listen} = \%listens;
+
+  # non-listen lists
+  $results{non_listen}->{dns_query} = {};
+
   return \%results;
+}
+
+sub _parse_resolv {
+  my $is_quote = shift;
+  my $rs = "/etc/resolv.conf";
+
+  return undef unless -r $rs;
+
+  open my $fh, '<', $rs
+     or return undef;
+
+  my @servers;
+  while(<$fh>) {
+    next unless /^\s*nameserver\s+/i;
+    my ($ser) = ($_ =~ /^\s*nameserver\s+(.+)$/i);
+    $ser = '"' . $ser . '"' if defined $is_quote;
+    push @servers, $ser if defined $ser;
+  }
+
+  return \@servers;
+}
+
+sub _replace_dns_query {
+  my $temp = shift;
+  my $secs = shift;
+
+  my $servers = _parse_resolv(1);
+
+  return undef if @$servers == 0;
+
+  my $out = join(", ", @$servers);
+  $temp =~ s/{{instances}}/$out/g;
+
+  if (defined $secs->{domains}) {
+    my @domains = split(/,\s*/, $secs->{domains});
+    my $ins_domains = join(", ", map { chomp; '"' . $_ . '"' } @domains);
+    $temp =~ s/{{domains}}/$ins_domains/g;
+  }
+
+  return $temp;
+}
+
+sub disc_dns_query {
+  my $self = shift;
+  my $secs = shift || 'www.baidu.com';
+
+  my $temp = <<'TEMP_END';
+# Query given DNS server and gives statistics
+[[inputs.dns_query]]
+  ## servers to query
+  servers = [{{instances}}]
+
+  ## Network is the network protocol name.
+  network = "udp"
+
+  ## Domains or subdomains to query.
+  domains = [{{domains}}]
+
+  ## Query record type.
+  ## Possible values: A, AAAA, CNAME, MX, NS, PTR, TXT, SOA, SPF, SRV.
+  record_type = "A"
+
+  ## Dns server port.
+  port = 53
+
+  ## Query timeout in seconds.
+  timeout = 2
+TEMP_END
+
+  return _replace_dns_query($temp, $secs);
 }
 
 sub _replace_memcached {
@@ -1034,19 +1148,25 @@ sub temp_outs {
   my $type  = shift;
   my $items = shift;
 
-  
-  my %select_func = (
-    'memcached' => $self->disc_memcached($items),
-    'mysql'     => $self->disc_mysql($items),
-    'mongodb'   => $self->disc_mongodb($items),
-    'redis'     => $self->disc_redis($items),
-    'pika'      => $self->disc_pika($items),
-  );
+  my %select_func;
+  if (ref($items) eq 'ARRAY') {
+    %select_func = (
+      'memcached' => $self->disc_memcached($items),
+      'mysql'     => $self->disc_mysql($items),
+      'mongodb'   => $self->disc_mongodb($items),
+      'redis'     => $self->disc_redis($items),
+      'pika'      => $self->disc_pika($items),
+    );
+  }
+
+  if (ref($items) eq 'HASH') {
+    $select_func{'dns_query'} = $self->disc_dns_query($items);
+  }
 
   return $select_func{$type};
 }
 
-sub gen_conf_by_type {
+sub gen_conf_for_listen {
   my $self   = shift;
   my $confd  = shift;
   my $type   = shift;
@@ -1082,8 +1202,8 @@ sub gen_conf_by_type {
   my $cnf = $confd . "$type" . "-" . "auto" . ".conf";
 
   # get current monitor port list and compare
-  my @cur_ports = _get_monitor_ports($type, $cnf);
-  my $comp_diff = _ports_compare(\@ports, \@cur_ports, \@ignore_ports);
+  my @cur_ports = _get_monitor_ports($cnf);
+  my $comp_diff = _diff_compare(\@ports, \@cur_ports, \@ignore_ports);
 
   my $counter = @{$comp_diff->{add}} + @{$comp_diff->{del}};
   if ($counter > 0) {
@@ -1107,11 +1227,85 @@ sub _parse_ports {
 }
 
 sub _get_monitor_ports {
+  my $conf  = shift;
+  my $fetch = _get_fetch_line($conf);
+
+  return () unless defined $fetch;
+  return _parse_ports($fetch);
+}
+
+sub _non_listen_parse_func {
   my $type = shift;
+
+  my %select_funcs = (
+    'dns_query' => _parse_resolv(), # return array hash
+  );
+
+  return $select_funcs{$type};
+}
+
+sub gen_conf_for_non_listen {
+  my $self  = shift;
+  my $confd = shift;
+  my $type  = shift;
+  my $secs  = shift;
+
+  return undef unless $self->is_support($type);
+
+  # create conf file
+  $confd .= "/" unless $confd =~ m|/$|i;
+  my $cnf = $confd . "$type" . "-" . "auto" . ".conf";
+
+  my $used_servers = _non_listen_parse_func($type);
+
+  # get current server lists
+  my $curr_servers = _get_monitor_servers($cnf);
+
+  my $comp_diff = _diff_compare($used_servers, $curr_servers);
+  my $counter   = @{$comp_diff->{add}} + @{$comp_diff->{del}};
+
+  if ($counter > 0) {
+    _diff_print($type, $comp_diff);
+    if ($self->is_update()) {
+      my $outs = $self->temp_outs($type, $secs);
+      # force overwrite cnf file
+      if (Utils::create_cnf_if($cnf, $outs, 1)) {
+        Utils::time_print("generate $cnf ok.");
+      }
+    }
+  }
+
+  return $counter;
+}
+
+sub _parse_servers {
+  my $fetch = shift;
+  my @servers;
+
+  my ($line) = ($fetch =~ m/=\s*\[(.+)\]\s*$/i);
+  foreach my $k (split(/,\s*/, $line)) {
+    $k =~ s/'|"//g;
+    push @servers, $k;
+  }
+
+  return @servers;
+}
+
+sub _get_monitor_servers {
   my $conf = shift;
 
-  return () unless -e $conf;
+  my $fetch = _get_fetch_line($conf);
 
+  return () unless defined $fetch;
+  my @servers = _parse_servers($fetch);
+
+  return \@servers;
+}
+
+sub _get_fetch_line {
+  my $conf = shift;
+
+  return undef unless -r $conf;
   open my $fh, '<', $conf or return undef;
 
   my $fetch;
@@ -1122,10 +1316,10 @@ sub _get_monitor_ports {
       last;
     }
   }
+
   close $fh;
 
-  return () unless defined $fetch;
-  return _parse_ports($fetch);
+  return $fetch;
 }
 
 sub _diff_print {
@@ -1145,12 +1339,12 @@ sub _is_in_array {
   return 0 unless defined $ref;
 
   foreach my $k (@$ref) {
-    return 1 if $k == $port;
+    return 1 if $k eq $port;
   }
   return 0;
 }
 
-sub _ports_compare {
+sub _diff_compare {
   my $r1 = shift;
   my $r2 = shift;
   my $no = shift; # ignore list
