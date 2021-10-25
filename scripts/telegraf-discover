@@ -189,7 +189,6 @@ use File::Find;
 use File::Basename;
 use IO::Socket::INET;
 use Carp;
-use Data::Dumper;
 
 use vars qw($VERSION);
 our $VERSION = '0.10';
@@ -221,7 +220,10 @@ sub create_cnf_if {
     return 0;
   }
 
-  return 1 unless defined $res;
+  unless (defined $res) {
+    time_print("ignore $cnf, as empty content!");
+    return 0;
+  }
 
   # write res to cnf
   open my $fh, '>', $cnf or carp "open $cnf error: $!";
@@ -699,7 +701,6 @@ sub _parse_resolv {
   my $rs = "/etc/resolv.conf";
 
   return undef unless -r $rs;
-  return undef unless _is_host_port_alive("wwww.baidu.com", 443);
 
   open my $fh, '<', $rs
      or return undef;
@@ -722,22 +723,22 @@ sub _replace_dns_query {
   my $servers = _parse_resolv(1);
 
   return undef if @$servers == 0;
+  return undef unless Utils::is_tcp_port_open("wwww.baidu.com", 443);
 
   my $out = join(", ", @$servers);
   $temp =~ s/{{instances}}/$out/g;
 
-  if (defined $secs->{domains}) {
-    my @domains = split(/,\s*/, $secs->{domains});
-    my $ins_domains = join(", ", map { chomp; '"' . $_ . '"' } @domains);
-    $temp =~ s/{{domains}}/$ins_domains/g;
-  }
+  $secs->{domains} ||= 'www.baidu.com';
+  my @domains = split(/,\s*/, $secs->{domains});
+  my $ins_domains = join(", ", map { chomp; '"' . Utils::remove_psquote($_) . '"' } @domains);
+  $temp =~ s/{{domains}}/$ins_domains/g;
 
   return $temp;
 }
 
 sub disc_dns_query {
   my $self = shift;
-  my $secs = shift || 'www.baidu.com';
+  my $secs = shift;
 
   my $temp = <<'TEMP_END';
 # Query given DNS server and gives statistics
@@ -1149,6 +1150,7 @@ sub temp_outs {
   my $type  = shift;
   my $items = shift;
 
+  my $ref = ref($items);
   my %select_func;
   if (ref($items) eq 'ARRAY') {
     %select_func = (
@@ -1162,6 +1164,10 @@ sub temp_outs {
 
   if (ref($items) eq 'HASH') {
     $select_func{'dns_query'} = $self->disc_dns_query($items);
+  }
+
+  if (ref($items) eq '') {
+    $select_func{'dns_query'} = $self->disc_dns_query();
   }
 
   return $select_func{$type};
@@ -1229,7 +1235,7 @@ sub _parse_ports {
 
 sub _get_monitor_ports {
   my $conf  = shift;
-  my $fetch = _get_fetch_line($conf);
+  my $fetch = _get_fetch_line($conf, "servers");
 
   return () unless defined $fetch;
   return _parse_ports($fetch);
@@ -1267,6 +1273,15 @@ sub gen_conf_for_non_listen {
   my $comp_diff = _diff_compare($used_servers, $curr_servers);
   my $counter   = @{$comp_diff->{add}} + @{$comp_diff->{del}};
 
+  if ($type eq 'dns_query' && defined($secs->{domains})) {
+    my @used_domain = map { Utils::remove_psquote($_) } split(/,\s*/, $secs->{domains});
+    my $curr_domain = _get_dns_domains($cnf);
+    my $comp_domain = _diff_compare(\@used_domain, $curr_domain);
+
+    $counter += @{$comp_domain->{add}} + @{$comp_domain->{del}};
+    _diff_print($type, $comp_domain) if $counter > 0;
+  }
+
   if ($counter > 0) {
     _diff_print($type, $comp_diff);
     if ($self->is_update()) {
@@ -1275,26 +1290,13 @@ sub gen_conf_for_non_listen {
       if (Utils::create_cnf_if($cnf, $outs, 1)) {
         Utils::time_print("generate $cnf ok.");
       }
+      else {
+        $counter = 0; # reset to 0
+      }
     }
   }
 
   return $counter;
-}
-
-# tcp port connected
-sub _is_host_port_alive {
-  my $host = shift;
-  my $port = shift || 443;
-
-  my $fail   = 0;
-  my $socket = IO::Socket::INET->new(
-    PeerAddr => "$host",
-    PeerPort => $port,
-    Proto    => "tcp",
-    Timeout  => 1.5,
-  ) or $fail++;
-
-  return $fail == 0 ? 1 : 0;;
 }
 
 sub _parse_servers {
@@ -1310,10 +1312,21 @@ sub _parse_servers {
   return @servers;
 }
 
+sub _get_dns_domains {
+  my $conf = shift;
+
+  my $fetch = _get_fetch_line($conf, "domains");
+
+  return () unless defined $fetch;
+  my @domains = _parse_servers($fetch);
+
+  return \@domains;
+}
+
 sub _get_monitor_servers {
   my $conf = shift;
 
-  my $fetch = _get_fetch_line($conf);
+  my $fetch = _get_fetch_line($conf, "servers");
 
   return () unless defined $fetch;
   my @servers = _parse_servers($fetch);
@@ -1323,6 +1336,7 @@ sub _get_monitor_servers {
 
 sub _get_fetch_line {
   my $conf = shift;
+  my $match= shift;
 
   return undef unless -r $conf;
   open my $fh, '<', $conf or return undef;
@@ -1330,7 +1344,7 @@ sub _get_fetch_line {
   my $fetch;
   while(<$fh>) {
     chomp;
-    if (/^\s*servers\s*=/i) {
+    if (/^\s*$match\s*=/i) {
       $fetch = $_;
       last;
     }
