@@ -699,6 +699,7 @@ sub _parse_resolv {
   my $rs = "/etc/resolv.conf";
 
   return undef unless -r $rs;
+  return undef unless _is_host_port_alive("wwww.baidu.com", 443);
 
   open my $fh, '<', $rs
      or return undef;
@@ -1258,6 +1259,8 @@ sub gen_conf_for_non_listen {
 
   my $used_servers = _non_listen_parse_func($type);
 
+  return 0 unless defined $used_servers;
+
   # get current server lists
   my $curr_servers = _get_monitor_servers($cnf);
 
@@ -1276,6 +1279,22 @@ sub gen_conf_for_non_listen {
   }
 
   return $counter;
+}
+
+# tcp port connected
+sub _is_host_port_alive {
+  my $host = shift;
+  my $port = shift || 443;
+
+  my $fail   = 0;
+  my $socket = IO::Socket::INET->new(
+    PeerAddr => "$host",
+    PeerPort => $port,
+    Proto    => "tcp",
+    Timeout  => 1.5,
+  ) or $fail++;
+
+  return $fail == 0 ? 1 : 0;;
 }
 
 sub _parse_servers {
