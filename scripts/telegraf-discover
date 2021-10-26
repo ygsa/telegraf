@@ -1276,6 +1276,11 @@ sub gen_conf_for_non_listen {
   if ($type eq 'dns_query') {
     if (defined($secs->{ignore}) && $secs->{ignore} > 0) {
       Utils::time_print("ignore dns_query.");
+      if (-w $cnf) {
+        Utils::time_print("will delete $cnf file");
+        unlink $cnf if $self->is_update();
+        return 1;
+      }
       return 0;
     }
 
