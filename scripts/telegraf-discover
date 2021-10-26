@@ -1257,7 +1257,7 @@ sub gen_conf_for_non_listen {
   my $type  = shift;
   my $secs  = shift;
 
-  return undef unless $self->is_support($type);
+  return 0 unless $self->is_support($type);
 
   # create conf file
   $confd .= "/" unless $confd =~ m|/$|i;
@@ -1273,13 +1273,20 @@ sub gen_conf_for_non_listen {
   my $comp_diff = _diff_compare($used_servers, $curr_servers);
   my $counter   = @{$comp_diff->{add}} + @{$comp_diff->{del}};
 
-  if ($type eq 'dns_query' && defined($secs->{domains})) {
-    my @used_domain = map { Utils::remove_psquote($_) } split(/,\s*/, $secs->{domains});
-    my $curr_domain = _get_dns_domains($cnf);
-    my $comp_domain = _diff_compare(\@used_domain, $curr_domain);
+  if ($type eq 'dns_query') {
+    if (defined($secs->{ignore}) && $secs->{ignore} > 0) {
+      Utils::time_print("ignore dns_query.");
+      return 0;
+    }
 
-    $counter += @{$comp_domain->{add}} + @{$comp_domain->{del}};
-    _diff_print($type, $comp_domain) if $counter > 0;
+    if (defined($secs->{domains})) {
+      my @used_domain = map { Utils::remove_psquote($_) } split(/,\s*/, $secs->{domains});
+      my $curr_domain = _get_dns_domains($cnf);
+      my $comp_domain = _diff_compare(\@used_domain, $curr_domain);
+      
+      $counter += @{$comp_domain->{add}} + @{$comp_domain->{del}};
+      _diff_print($type, $comp_domain) if $counter > 0;
+    }
   }
 
   if ($counter > 0) {
