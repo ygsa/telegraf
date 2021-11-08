@@ -176,13 +176,26 @@ EOF
   # add iptables check
   if [[ ! -f /etc/telegraf/telegraf.d/iptables.conf ]]; then
     cat <<EOF >> /etc/telegraf/telegraf.d/iptables.conf
-## Gather packets and bytes throughput from iptables.
-## need sudo privileges
+## Gather packets and bytes throughput from iptables
 #[[inputs.iptables]]
+#  ## iptables require root access on most systems.
+#  ## Setting 'use_sudo' to true will make use of sudo to run iptables.
+#  ## Users must configure sudo to allow telegraf user to run iptables with no password.
+#  ## iptables can be restricted to only list command "iptables -nvL".
 #  use_sudo = true
+#  Setting 'use_rule' to true to get ruleid result. default is true
+#  use_rule = false
+#  ## Setting 'use_lock' to true runs iptables with the "-w" option.
+#  ## Adjust your sudo settings appropriately if using this option ("iptables -w 5 -nvl")
 #  use_lock = false
+#  ## Define an alternate executable, such as "ip6tables". Default is "iptables".
+#  binary = "iptables"
+#  ## defines the table to monitor:
 #  table = "filter"
-#  chains = [ "INPUT"]
+#  ## defines the chains to monitor.
+#  ## NOTE: iptables rules without a comment will not be monitored when use_rule is true.
+#  ## Read the plugin documentation for more information.
+#  chains = [ "INPUT" ]
 EOF
   fi
 
@@ -232,6 +245,23 @@ if [[ -d /etc/cron.d ]] && [[ -d $LOG_DIR ]]; then
     cat <<EOF > /etc/cron.d/telegraf
 PATH=/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/sbin:/usr/local/bin
 * * * * * root telegraf-discover --verbose --update >>$LOG_DIR/telegraf-discover.log
+EOF
+fi
+
+# add sudoer file
+if [[ -d /etc/sudoers.d ]]; then
+    cat <<EOF > /etc/sudoers.d/telegraf
+Cmnd_Alias MEGACLI = /usr/bin/MegaCli
+telegraf ALL=(root) NOPASSWD: MEGACLI
+Defaults!MEGACLI !logfile, !syslog, !pam_session
+
+Cmnd_Alias IPTABLESSHOW = /usr/bin/iptables -nvL *
+telegraf  ALL=(root) NOPASSWD: IPTABLESSHOW
+Defaults!IPTABLESSHOW !logfile, !syslog, !pam_session
+
+Cmnd_Alias IPTABLESRULE = /usr/bin/iptables -S *
+telegraf  ALL=(root) NOPASSWD: IPTABLESRULE
+Defaults!IPTABLESRULE !logfile, !syslog, !pam_session
 EOF
 fi
 
