@@ -42,6 +42,10 @@ $ visudo
 Cmnd_Alias IPTABLESSHOW = /usr/bin/iptables -nvL *
 telegraf  ALL=(root) NOPASSWD: IPTABLESSHOW
 Defaults!IPTABLESSHOW !logfile, !syslog, !pam_session
+
+Cmnd_Alias IPTABLESRULE = /usr/bin/iptables -S *
+telegraf  ALL=(root) NOPASSWD: IPTABLESRULE
+Defaults!IPTABLESRULE !logfile, !syslog, !pam_session
 ```
 
 ### Using IPtables lock feature
@@ -55,6 +59,8 @@ Defining multiple instances of this plugin in telegraf.conf can lead to concurre
   use_sudo = false
   # run iptables with the lock option
   use_lock = false
+  # Setting 'use_rule' to true to get ruleid result. default is true
+  use_rule = true
   # Define an alternate executable, such as "ip6tables". Default is "iptables".
   # binary = "ip6tables"
   # defines the table to monitor:
@@ -63,14 +69,16 @@ Defining multiple instances of this plugin in telegraf.conf can lead to concurre
   chains = [ "INPUT" ]
 ```
 
-### Measurements & Fields:
+### when use_rule is true
+
+#### Measurements & Fields:
 
 
 - iptables
     - pkts (integer, count)
     - bytes (integer, bytes)
 
-### Tags:
+#### Tags:
 
 - All measurements have the following tags:
     - table
@@ -78,6 +86,29 @@ Defining multiple instances of this plugin in telegraf.conf can lead to concurre
     - ruleid
 
 The `ruleid` is the comment associated to the rule.
+
+### when use_rule is false
+
+#### Measurements & Fields:
+
+- iptables
+    - checksum (integer, crc32 checksum)
+    - total_rules (integer, count)
+
+    - filter & INPUT
+        - is_state (boolean: whether has state rule)
+        - is_drop (boolean: the last rule is drop or not)
+        - is_reject (boolean: the last rule is reject or not)
+
+    - filter & FORWARD
+        - is_drop (boolean: the last rule is drop or not)
+	- is_reject (boolean: the last rule is reject or not)
+
+#### Tags:
+
+- All measurements have the following tags:
+    - table
+    - chain
 
 ### Example Output:
 
@@ -89,8 +120,15 @@ pkts bytes target     prot opt in     out     source               destination
  42   2048   ACCEPT     tcp  --  *      *       192.168.0.0/24       0.0.0.0/0            tcp dpt:80 /* httpd */
 ```
 
+#### when use_rule is true
 ```
 $ ./telegraf --config telegraf.conf --input-filter iptables --test
 iptables,table=filter,chain=INPUT,ruleid=ssh pkts=100i,bytes=1024i 1453831884664956455
 iptables,table=filter,chain=INPUT,ruleid=httpd pkts=42i,bytes=2048i 1453831884664956455
+```
+
+#### when use_rule is false
+```
+$ ./telegraf --config telegraf.conf --input-filter iptables --test
+iptables,chain=input,table=filter checksum=2798646183i,is_drop=0i,is_reject=1i,is_state=1i,total_rules=16i 1636371711000000000
 ```
