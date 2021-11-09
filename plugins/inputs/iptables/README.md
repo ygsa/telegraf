@@ -130,5 +130,5 @@ iptables,table=filter,chain=INPUT,ruleid=httpd pkts=42i,bytes=2048i 145383188466
 #### when use_rule is false
 ```
 $ ./telegraf --config telegraf.conf --input-filter iptables --test
-iptables,chain=input,table=filter checksum=2798646183i,is_drop=0i,is_reject=1i,is_state=1i,total_rules=16i 1636371711000000000
+iptables,chain=input,table=filter checksum=2798646183i,is_drop=0i,is_reject=1i,is_state=1i,total_rules=4i 1636371711000000000
 ```

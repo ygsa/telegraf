@@ -732,7 +732,7 @@ sub disc_iptables {
   ## Users must configure sudo to allow telegraf user to run iptables with no password.
   ## iptables can be restricted to list command "iptables -nvL" or "iptables -S".
   use_sudo = true
-  Setting 'use_rule' to true to get ruleid result. default is true
+  ## Setting 'use_rule' to true to get ruleid result. default is true
   use_rule = false
   ## Setting 'use_lock' to true runs iptables with the "-w" option.
   ## Adjust your sudo settings appropriately if using this option ("iptables -w 5 -nvl")
