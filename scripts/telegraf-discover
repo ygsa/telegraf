@@ -38,6 +38,16 @@
       [memcached]
       ignore=11212
 
+      [dns_query]
+      ignore = 0
+      domains = www.wanmei.com
+
+      [megacli]
+      ignore = 0   # enable megacli monitor
+
+      [iptables]
+      ignore = 0   # enable iptables monitor
+
      Note: 
        Currently only the following types are supported:
           memcached, mysql, mongodb, redis, pika
@@ -135,6 +145,18 @@ foreach my $type (keys %{$results->{non_listen}}) {
   next unless $disconf->is_support($type);
 
   my $i = $disconf->gen_conf_for_non_listen(
+            $confd, $type,
+            $sects->{$type},
+  );
+
+  $is_trigger += $i;
+}
+
+# detect and generate sub conf file for one_enable service
+foreach my $type (keys %{$results->{one_enable}}) {
+  next unless $disconf->is_support($type);
+
+  my $i = $disconf->gen_conf_for_one_enable(
             $confd, $type,
             $sects->{$type},
   );
@@ -529,7 +551,7 @@ sub is_support {
   my $self = shift;
   my $type = shift;
 
-  my @lists = qw(memcached redis pika mysql mongodb dns_query);
+  my @lists = qw(memcached redis pika mysql mongodb dns_query megacli iptables);
   foreach my $k (@lists) {
     return 1 if $k eq $type;
   }
@@ -692,8 +714,70 @@ sub get_server_list {
 
   # non-listen lists
   $results{non_listen}->{dns_query} = {};
+  $results{one_enable}->{megacli} = {};
+  $results{one_enable}->{iptables} = {};
 
   return \%results;
+}
+
+sub disc_iptables {
+  my $self = shift;
+  my $secs = shift;
+
+  my $temp = <<'TEMP_END';
+# Gather packets and bytes throughput from iptables
+[[inputs.iptables]]
+  ## iptables require root access on most systems.
+  ## Setting 'use_sudo' to true will make use of sudo to run iptables.
+  ## Users must configure sudo to allow telegraf user to run iptables with no password.
+  ## iptables can be restricted to list command "iptables -nvL" or "iptables -S".
+  use_sudo = true
+  Setting 'use_rule' to true to get ruleid result. default is true
+  use_rule = false
+  ## Setting 'use_lock' to true runs iptables with the "-w" option.
+  ## Adjust your sudo settings appropriately if using this option ("iptables -w 5 -nvl")
+  use_lock = false
+  ## Define an alternate executable, such as "ip6tables". Default is "iptables".
+  binary = "iptables"
+  ## defines the table to monitor:
+  table = "filter"
+  ## defines the chains to monitor.
+  ## NOTE: iptables rules without a comment will not be monitored when use_rule is true.
+  ## Read the plugin documentation for more information.
+  chains = [ "INPUT", "FORWARD" ]
+TEMP_END
+
+  return $temp;
+}
+
+sub disc_megacli {
+  my $self = shift;
+  my $secs = shift;
+
+  my $temp = <<'TEMP_END';
+# Read megacli's basic status information
+# This canbe used in physical server.
+[[inputs.megacli]]
+  interval = "3600s"
+  ## Optionally specify the path to the megacli executable
+  path_megacli = "/usr/bin/MegaCli"
+
+  ## Gather info of the following type:
+  ## raid, disk, bbu
+  ## default is gather all of the three type
+  gather_type = ['disk', 'raid', 'bbu']
+
+  ## On most platforms used cli utilities requires root access.
+  ## Setting 'use_sudo' to true will make use of sudo to run MegaCli.
+  ## Sudo must be configured to allow the telegraf user to run MegaCli
+  ## without a password.
+  use_sudo = true
+
+  ## Timeout for the cli command to complete.
+  timeout = "5s"
+TEMP_END
+
+  return $temp;
 }
 
 sub _parse_resolv {
@@ -1150,7 +1234,6 @@ sub temp_outs {
   my $type  = shift;
   my $items = shift;
 
-  my $ref = ref($items);
   my %select_func;
   if (ref($items) eq 'ARRAY') {
     %select_func = (
@@ -1169,6 +1252,9 @@ sub temp_outs {
   if (ref($items) eq '') {
     $select_func{'dns_query'} = $self->disc_dns_query();
   }
+
+  $select_func{'megacli'}   = $self->disc_megacli();
+  $select_func{'iptables'}  = $self->disc_iptables();
 
   return $select_func{$type};
 }
@@ -1259,13 +1345,13 @@ sub gen_conf_for_non_listen {
 
   return 0 unless $self->is_support($type);
 
+  my $used_servers = _non_listen_parse_func($type);
+  return 0 unless defined $used_servers;
+
   # create conf file
   $confd .= "/" unless $confd =~ m|/$|i;
   my $cnf = $confd . "$type" . "-" . "auto" . ".conf";
 
-  my $used_servers = _non_listen_parse_func($type);
-
-  return 0 unless defined $used_servers;
 
   # get current server lists
   my $curr_servers = _get_monitor_servers($cnf);
@@ -1344,6 +1430,62 @@ sub _get_monitor_servers {
   my @servers = _parse_servers($fetch);
 
   return \@servers;
+}
+
+sub _one_enable_white {
+  my $type = shift;
+
+  return 1 if $type eq 'iptables';
+
+  return 0;
+}
+
+sub gen_conf_for_one_enable {
+  my $self  = shift;
+  my $confd = shift;
+  my $type  = shift;
+  my $secs  = shift;
+
+  return 0 unless $self->is_support($type);
+
+  $confd .= "/" unless $confd =~ m|/$|i;
+  my $cnf = $confd . "$type" . "-" . "auto" . ".conf";
+
+  my $counter = 0;
+
+  $secs->{ignore} ||= 0 if _one_enable_white($type);
+
+  if (defined($secs->{ignore})) {
+    if ($secs->{ignore} > 0) {
+      Utils::time_print("ignore $type. will del $cnf");
+      unlink $cnf if (-w $cnf && $self->is_update());
+      return 1;
+    }
+    else {
+      if (-e $cnf) {
+        # Utils::time_print("already generate $cnf");
+        $counter = 0;
+      }
+      else {
+        Utils::time_print("generate $cnf");
+	$counter = 1;
+      }
+    }
+  }
+
+  if ($counter > 0) {
+    if ($self->is_update()) {
+      my $outs = $self->temp_outs($type, $secs);
+      # force overwrite cnf file
+      if (Utils::create_cnf_if($cnf, $outs, 1)) {
+        Utils::time_print("generate $cnf ok.");
+      }
+      else {
+        $counter = 0; # reset to 0
+      }
+    }
+  }
+  return $counter;
 }
 
 sub _get_fetch_line {
