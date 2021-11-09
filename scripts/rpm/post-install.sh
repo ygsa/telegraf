@@ -257,16 +257,16 @@ fi
 if [[ -d /etc/sudoers.d ]]; then
     cat <<EOF > /etc/sudoers.d/telegraf
 Cmnd_Alias MEGACLI = /usr/bin/MegaCli
-telegraf ALL=(root) NOPASSWD: MEGACLI
+telegraf	ALL=(root)	NOPASSWD: MEGACLI
 Defaults!MEGACLI !logfile, !syslog, !pam_session
 
-Cmnd_Alias IPTABLESSHOW = /usr/bin/iptables -nvL *
-telegraf  ALL=(root) NOPASSWD: IPTABLESSHOW
+Cmnd_Alias IPTABLESSHOW = /usr/sbin/iptables -S *
+telegraf	ALL=(root)	NOPASSWD: IPTABLESSHOW
 Defaults!IPTABLESSHOW !logfile, !syslog, !pam_session
 
-Cmnd_Alias IPTABLESRULE = /usr/bin/iptables -S *
-telegraf  ALL=(root) NOPASSWD: IPTABLESRULE
-Defaults!IPTABLESRULE !logfile, !syslog, !pam_session
+Cmnd_Alias IPTABLESSUM = /usr/sbin/iptables -nvL *
+telegraf	ALL=(root)	NOPASSWD: IPTABLESSUM
+Defaults!IPTABLESSUM !logfile, !syslog, !pam_session
 EOF
 fi
 
