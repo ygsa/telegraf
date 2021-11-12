@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -228,7 +227,6 @@ func setResult(resultString string, fields map[string]interface{}, tags map[stri
 		"response_status_code_mismatch": 6,
 	}
 
-	tags["result"] = resultString
 	fields["result_type"] = resultString
 	fields["result_code"] = resultCodes[resultString]
 }
@@ -337,7 +335,6 @@ func (h *HTTPResponse) httpGather(u string) (map[string]interface{}, map[string]
 	}
 
 	// Set log the HTTP response code
-	tags["status_code"] = strconv.Itoa(resp.StatusCode)
 	fields["http_response_code"] = resp.StatusCode
 
 	if h.ResponseBodyMaxSize.Size == 0 {

@@ -85,8 +85,6 @@ This input plugin checks HTTP/HTTPS connections.
   - tags:
     - server (target URL)
     - method (request method)
-    - status_code (response status code)
-    - result ([see below](#result--result_code))
   - fields:
     - response_time (float, seconds)
     - content_length (int, response body length)
@@ -116,5 +114,5 @@ This tag is used to expose network and plugin errors. HTTP errors are considered
 ### Example Output:
 
 ```
-http_response,method=GET,result=success,server=http://github.com,status_code=200 content_length=87878i,http_response_code=200i,response_time=0.937655534,result_code=0i,result_type="success" 1565839598000000000
+http_response,method=GET,server=http://github.com content_length=87878i,http_response_code=200i,response_time=0.937655534,result_code=0i,result_type="success" 1565839598000000000
 ```
