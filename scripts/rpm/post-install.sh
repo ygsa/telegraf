@@ -260,11 +260,11 @@ Cmnd_Alias MEGACLI = /usr/bin/MegaCli
 telegraf	ALL=(root)	NOPASSWD: MEGACLI
 Defaults!MEGACLI !logfile, !syslog, !pam_session
 
-Cmnd_Alias IPTABLESSHOW = /usr/sbin/iptables -S *
+Cmnd_Alias IPTABLESSHOW = /sbin/iptables -S *
 telegraf	ALL=(root)	NOPASSWD: IPTABLESSHOW
 Defaults!IPTABLESSHOW !logfile, !syslog, !pam_session
 
-Cmnd_Alias IPTABLESSUM = /usr/sbin/iptables -nvL *
+Cmnd_Alias IPTABLESSUM = /sbin/iptables -nvL *
 telegraf	ALL=(root)	NOPASSWD: IPTABLESSUM
 Defaults!IPTABLESSUM !logfile, !syslog, !pam_session
 EOF
