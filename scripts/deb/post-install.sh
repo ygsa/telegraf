@@ -263,6 +263,25 @@ Cmnd_Alias IPTABLESSUM = /sbin/iptables -nvL *
 telegraf	ALL=(root)	NOPASSWD: IPTABLESSUM
 Defaults!IPTABLESSUM !logfile, !syslog, !pam_session
 EOF
+
+if ! visudo -c -f /etc/sudoers.d/telegraf >/dev/null 2>&1; then
+    cat <<EOF > /etc/sudoers.d/telegraf
+Cmnd_Alias MEGACLI = /usr/bin/MegaCli
+telegraf	ALL=(root)	NOPASSWD: MEGACLI
+Defaults!MEGACLI !logfile, !syslog
+
+Cmnd_Alias IPTABLESSHOW = /sbin/iptables -S *
+telegraf	ALL=(root)	NOPASSWD: IPTABLESSHOW
+Defaults!IPTABLESSHOW !logfile, !syslog
+
+Cmnd_Alias IPTABLESSUM = /sbin/iptables -nvL *
+telegraf	ALL=(root)	NOPASSWD: IPTABLESSUM
+Defaults!IPTABLESSUM !logfile, !syslog
+EOF
+fi
+
+    chmod 440 /etc/sudoers.d/telegraf
+
 fi
 
 if [[ "$(readlink /proc/1/exe)" == */systemd ]]; then
