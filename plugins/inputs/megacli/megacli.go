@@ -64,7 +64,12 @@ func (*Megacli) SampleConfig() string {
 
 func fileExists(file string) bool {
 	info, err := os.Stat(file)
+
 	if os.IsNotExist(err) {
+		return false
+	}
+	// maybe permission err
+	if err != nil {
 		return false
 	}
 	return !info.IsDir()
@@ -75,7 +80,7 @@ func (m *Megacli) Init() error {
 
 	if len(m.PathMegacli) > 0 {
 		if !fileExists(m.PathMegacli) {
-			m.Log.Warn("MegaCli is not exist!")
+			m.Log.Warn("MegaCli is not exist or permission deny!")
 		}
 	} else {
 		m.PathMegacli, err = exec.LookPath("MegaCli")
