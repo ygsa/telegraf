@@ -86,7 +86,8 @@ func (d *DNSQuery) Gather(acc telegraf.Accumulator) error {
 
 				dnsQueryTime, rcode, err := d.getDNSQueryTime(domain, server)
 				if rcode >= 0 {
-					tags["rcode"] = dns.RcodeToString[rcode]
+					// ignore for graphite to avoid tag change
+					//tags["rcode"] = dns.RcodeToString[rcode]
 					fields["rcode_value"] = rcode
 				}
 				if err == nil {
@@ -204,7 +205,8 @@ func setResult(result ResultType, fields map[string]interface{}, tags map[string
 		tag = "error"
 	}
 
-	tags["result"] = tag
+	// ignore tags for graphite to avoid tag change
+	//tags["result"] = tag
 	fields["result_code"] = uint64(result)
 }
 
