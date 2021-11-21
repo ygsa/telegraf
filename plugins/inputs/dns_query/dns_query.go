@@ -91,12 +91,12 @@ func (d *DNSQuery) Gather(acc telegraf.Accumulator) error {
 					fields["rcode_value"] = rcode
 				}
 				if err == nil {
-					setResult(Success, fields, tags)
+					setResult(Success, fields)
 					fields["query_time_ms"] = dnsQueryTime
 				} else if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
-					setResult(Timeout, fields, tags)
+					setResult(Timeout, fields)
 				} else if err != nil {
-					setResult(Error, fields, tags)
+					setResult(Error, fields)
 					acc.AddError(err)
 				}
 
@@ -194,17 +194,7 @@ func (d *DNSQuery) parseRecordType() (uint16, error) {
 	return recordType, err
 }
 
-func setResult(result ResultType, fields map[string]interface{}, tags map[string]string) {
-	var tag string
-	switch result {
-	case Success:
-		tag = "success"
-	case Timeout:
-		tag = "timeout"
-	case Error:
-		tag = "error"
-	}
-
+func setResult(result ResultType, fields map[string]interface{}) {
 	// ignore tags for graphite to avoid tag change
 	//tags["result"] = tag
 	fields["result_code"] = uint64(result)
