@@ -5,9 +5,19 @@ import (
 	"hash/fnv"
 	"sort"
 	"time"
+	"sync"
+	"github.com/beevik/ntp"
 
 	"github.com/influxdata/telegraf"
 )
+
+type tmdiff struct {
+	diff time.Duration
+	now time.Time
+	mu sync.Mutex
+}
+
+var Gdiff = tmdiff{diff: 0, now: time.Now()}
 
 type metric struct {
 	name   string
@@ -86,12 +96,37 @@ func FromMetric(other telegraf.Metric) telegraf.Metric {
 	return m
 }
 
+// change Gdiff when ntp request is ok. we should follow last value if request error,
+// and cache in 1 minute
+func GetTimeDiff(server string) time.Duration {
+	Gdiff.mu.Lock()
+	defer Gdiff.mu.Unlock()
+
+	tnow := time.Now()
+	tcache := Gdiff.now.Add(1 * time.Minute)
+	if Gdiff.diff == 0 || tnow.After(tcache) {
+		options := ntp.QueryOptions{Timeout: 2 * time.Second, TTL: 5}
+		response, err := ntp.QueryWithOptions(server, options)
+
+		if err == nil {
+			Gdiff.diff =  (response.ClockOffset - (response.ClockOffset % time.Second))
+		}
+		Gdiff.now = time.Now()
+	}
+
+	return Gdiff.diff
+}
+
 func (m *metric) String() string {
 	return fmt.Sprintf("%s %v %v %d", m.name, m.Tags(), m.Fields(), m.tm.UnixNano())
 }
 
 func (m *metric) Name() string {
 	return m.name
+}
+
+func remove(slice []*telegraf.Tag, s int) []*telegraf.Tag {
+    return append(slice[:s], slice[s+1:]...)
 }
 
 func (m *metric) Tags() map[string]string {
@@ -120,6 +155,12 @@ func (m *metric) FieldList() []*telegraf.Field {
 }
 
 func (m *metric) Time() time.Time {
+	tags := m.Tags()
+	if _, ok := tags["time_change"]; ok {
+		diff := GetTimeDiff(tags["time_server"])
+		m.SetTime(m.tm.Add(diff))
+	}
+
 	return m.tm
 }
 

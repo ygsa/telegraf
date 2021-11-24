@@ -190,6 +190,11 @@ type AgentConfig struct {
 
 	Hostname     string
 	OmitHostname bool
+
+	// local time maybe change for test purpose, we should change the metric time
+	// when to send to output with internet time.
+	TimeChange bool `toml:"time_change"`
+	TimeServer string `toml:"time_server"`
 }
 
 // InputNames returns a list of strings of the configured inputs.
@@ -361,6 +366,11 @@ var agentConfig = `
   ## If set to true, do no set the "host" tag in the telegraf agent.
   omit_hostname = false
 
+  ## local time maybe change for test purpose, we should change the metric time
+  ## when send to output. the diff time will be cached to improve the metric 
+  ## SetTime() performace
+  time_change = false
+  # time_server = "0.centos.pool.ntp.org"
 `
 
 var outputHeader = `
@@ -774,6 +784,14 @@ func (c *Config) LoadConfigData(data []byte) error {
 		}
 
 		c.Tags["host"] = c.Agent.Hostname
+	}
+
+	if c.Agent.TimeChange {
+		c.Tags["time_change"] = "yes"
+		if len(c.Agent.TimeServer) == 0 {
+			return fmt.Errorf("you must set time_server when time_change is true")
+		}
+		c.Tags["time_server"] = c.Agent.TimeServer
 	}
 
 	if len(c.UnusedFields) > 0 {
