@@ -179,7 +179,7 @@ func (m *MongoDB) gatherServer(server *Server, acc telegraf.Accumulator) error {
 
 		sess, err := mgo.DialWithInfo(dialInfo)
 		if err != nil {
-			return fmt.Errorf("unable to connect to MongoDB: %s", err.Error())
+			return fmt.Errorf("unable to connect to MongoDB(%s): %s", strings.Join(dialInfo.Addrs, ","), err.Error())
 		}
 		server.Session = sess
 	}

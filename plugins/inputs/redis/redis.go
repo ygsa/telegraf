@@ -39,6 +39,7 @@ type Redis struct {
 type Client interface {
 	Do(returnType string, args ...interface{}) (interface{}, error)
 	Info() *redis.StringCmd
+	Options() *redis.Options
 	BaseTags() map[string]string
 }
 
@@ -175,6 +176,10 @@ func (r *RedisClient) Do(returnType string, args ...interface{}) (interface{}, e
 
 func (r *RedisClient) Info() *redis.StringCmd {
 	return r.client.Info("ALL")
+}
+
+func (r *RedisClient) Options() *redis.Options {
+	return r.client.Options()
 }
 
 func (r *RedisClient) BaseTags() map[string]string {
@@ -344,10 +349,11 @@ func (r *Redis) gatherCommandValues(client Client, acc telegraf.Accumulator) err
 	return nil
 }
 
+
 func (r *Redis) gatherServer(client Client, acc telegraf.Accumulator) error {
 	info, err := client.Info().Result()
 	if err != nil {
-		return err
+		return fmt.Errorf("redis(%v) - %s", client.Options().Addr, err)
 	}
 
 	rdr := strings.NewReader(info)
