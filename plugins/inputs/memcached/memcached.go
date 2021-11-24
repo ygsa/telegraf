@@ -125,7 +125,7 @@ func (m *Memcached) gatherServer(
 	}
 
 	if conn == nil {
-		return fmt.Errorf("Failed to create net connection")
+		return fmt.Errorf("%s - Failed to create net connection", address)
 	}
 
 	// Extend connection
@@ -136,15 +136,15 @@ func (m *Memcached) gatherServer(
 
 	// Send command
 	if _, err := fmt.Fprint(rw, "stats\r\n"); err != nil {
-		return err
+		return fmt.Errorf("%s - %s", address, err.Error())
 	}
 	if err := rw.Flush(); err != nil {
-		return err
+		return fmt.Errorf("%s - %s", address, err.Error())
 	}
 
 	values, err := parseResponse(rw.Reader)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s - %s", address, err.Error())
 	}
 
 	// Add server address as a tag

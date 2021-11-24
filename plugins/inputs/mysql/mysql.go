@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"regexp"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/influxdata/telegraf"
@@ -458,6 +459,18 @@ const (
 	`
 )
 
+func getserport (serv string) string {
+	var serport string
+	re := regexp.MustCompile(`tcp\((.+?)\)`)
+
+	r1 := re.FindStringSubmatch(serv)
+	if len(r1) > 0 {
+		serport = r1[1]
+	}
+
+	return serport
+}
+
 func (m *Mysql) gatherServer(serv string, acc telegraf.Accumulator) error {
 	serv, err := dsnAddTimeout(serv)
 	if err != nil {
@@ -466,14 +479,15 @@ func (m *Mysql) gatherServer(serv string, acc telegraf.Accumulator) error {
 
 	db, err := sql.Open("mysql", serv)
 	if err != nil {
-		return err
+		return fmt.Errorf("mysql(%s): %s", getserport(serv), err.Error())
 	}
 
 	defer db.Close()
 
+	// identify the host:port to avoid confused when monit multiple mysql instance
 	err = m.gatherGlobalStatuses(db, serv, acc)
 	if err != nil {
-		return err
+		return fmt.Errorf("mysql(%s): %s", getserport(serv), err.Error())
 	}
 
 	if m.GatherGlobalVars {
