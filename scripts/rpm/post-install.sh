@@ -144,10 +144,10 @@ if [[ -d /etc/telegraf/telegraf.d ]]; then
 #  # Specify the number of samples to be acquired from each server as the integer 
 #  # samples, with values from 1 to 8 inclusive, default is 2. 
 #  # Equal to ntpdate '-p' option
-#  samples = 2
+#  samples = 1
 #
 #  # Specify the maximum time waiting for a server response as the value timeout.
-#  timeout = 5
+#  timeout = 3
 EOF
   fi
 
