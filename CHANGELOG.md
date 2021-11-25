@@ -1,3 +1,9 @@
+## v1.18.6_7 [2021-11-23]
+
+#### Release Notes
+  - Added time_change feature
+  - print host info when monitor multiple db instances
+
 ## v1.18.3 [2021-05-20]
 
 #### Release Notes
