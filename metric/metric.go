@@ -14,6 +14,7 @@ import (
 type tmdiff struct {
 	diff time.Duration
 	now time.Time
+	fail int32
 	mu sync.Mutex
 }
 
@@ -104,14 +105,23 @@ func GetTimeDiff(server string) time.Duration {
 
 	tnow := time.Now()
 	tcache := Gdiff.now.Add(1 * time.Minute)
-	if Gdiff.diff == 0 || tnow.After(tcache) {
-		options := ntp.QueryOptions{Timeout: 2 * time.Second, TTL: 5}
+
+
+	if Gdiff.fail < 2 && Gdiff.diff == 0 || tnow.After(tcache) {
+		options := ntp.QueryOptions{Timeout: 3 * time.Second, TTL: 5}
 		response, err := ntp.QueryWithOptions(server, options)
 
 		if err == nil {
-			Gdiff.diff =  (response.ClockOffset - (response.ClockOffset % time.Second))
+			Gdiff.diff =  response.ClockOffset
+			Gdiff.fail = 0
+		} else {
+			Gdiff.fail++
 		}
 		Gdiff.now = time.Now()
+	} else {
+		if tnow.After(tcache) {
+			Gdiff.fail = 0
+		}
 	}
 
 	return Gdiff.diff
@@ -158,7 +168,7 @@ func (m *metric) Time() time.Time {
 	tags := m.Tags()
 	if _, ok := tags["time_change"]; ok {
 		diff := GetTimeDiff(tags["time_server"])
-		m.SetTime(m.tm.Add(diff))
+		m.SetTime(m.tm.Add(diff.Truncate(time.Second)))
 	}
 
 	return m.tm
