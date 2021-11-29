@@ -108,7 +108,7 @@ func GetTimeDiff(server string) time.Duration {
 
 
 	if Gdiff.fail < 2 && Gdiff.diff == 0 || tnow.After(tcache) {
-		options := ntp.QueryOptions{Timeout: 3 * time.Second, TTL: 5}
+		options := ntp.QueryOptions{Timeout: 3 * time.Second}
 		response, err := ntp.QueryWithOptions(server, options)
 
 		if err == nil {
