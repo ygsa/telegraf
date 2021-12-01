@@ -28,6 +28,15 @@ type Kernel struct {
 	entropyStatFile string
 }
 
+func readFile(path string) string {
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(data))
+}
+
 func (k *Kernel) Description() string {
 	return "Get kernel statistics from /proc/stat"
 }
@@ -55,6 +64,11 @@ func (k *Kernel) Gather(acc telegraf.Accumulator) error {
 	fields := make(map[string]interface{})
 
 	fields["entropy_avail"] = int64(entropyValue)
+
+	tags := map[string]string{"kernel_release": "none"}
+	if _, err := os.Stat("/proc/sys/kernel/osrelease"); err == nil {
+		tags["kernel_release"] = readFile("/proc/sys/kernel/osrelease")
+	}
 
 	dataFields := bytes.Fields(data)
 	for i, field := range dataFields {
@@ -97,7 +111,7 @@ func (k *Kernel) Gather(acc telegraf.Accumulator) error {
 		}
 	}
 
-	acc.AddCounter("kernel", fields, map[string]string{})
+	acc.AddCounter("kernel", fields, tags)
 
 	return nil
 }
