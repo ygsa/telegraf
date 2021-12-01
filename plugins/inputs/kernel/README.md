@@ -60,12 +60,14 @@ Number of forks since boot.
 
 ### Tags:
 
-None
+```
+kernel_release
+```
 
 ### Example Output:
 
 ```
 $ telegraf --config ~/ws/telegraf.conf --input-filter kernel --test
 * Plugin: kernel, Collection 1
-> kernel entropy_available=2469i,boot_time=1457505775i,context_switches=2626618i,disk_pages_in=5741i,disk_pages_out=1808i,interrupts=1472736i,processes_forked=10673i 1457613402960879816
+> kernel,kernel_release=3.10.0-1160.25.1.el7.x86_64 entropy_available=2469i,boot_time=1457505775i,context_switches=2626618i,disk_pages_in=5741i,disk_pages_out=1808i,interrupts=1472736i,processes_forked=10673i 1457613402960879816
 ```
