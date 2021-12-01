@@ -82,14 +82,16 @@ EOF
 
   if grep '{{graphites}}' /etc/telegraf/telegraf.conf >/dev/null 2>&1; then
     SERVERS=$(verify_servers $OPT_SERVER1 $OPT_SERVER2)
-    [ "$SERVERS" ] && {
+    if [ "$SERVERS" ]; then
       sed -i "s/{{graphites}}/$SERVERS/" /etc/telegraf/telegraf.conf
       [[ "$?" -eq 0 ]] && {
         log "change servers to $SERVERS ok"
       } || {
         error "change servers to $SERVERS error"
       }
-    }
+    else
+      error "no server alive!"
+    fi
   fi
 }
 
@@ -231,9 +233,9 @@ telegraf-prepare - set the global tags and graphite servers for the telegraf set
     -v print version message.
     -h print help message.
   eg:
-    telegraf-tags -d beijing -m test -t sre -1 server1 -2 server2
-    telegraf-tags -d beijing -m test -t sre -1 server1 -2 server2 -n 10.1.0
-  note: telegraf-tags will change the file /etc/default/telegraf.
+    telegraf-prepare -d beijing -m test -t sre -1 server1 -2 server2
+    telegraf-prepare -d beijing -m test -t sre -1 server1 -2 server2 -n 10.1.0
+  note: telegraf-prepare will change the file /etc/default/telegraf.
 
 
 =head1 AUTHOR
