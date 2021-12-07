@@ -792,7 +792,7 @@ sub _parse_resolv {
   my @servers;
   while(<$fh>) {
     next unless /^\s*nameserver\s+/i;
-    my ($ser) = ($_ =~ /^\s*nameserver\s+(.+)$/i);
+    my ($ser) = ($_ =~ /^\s*nameserver\s+(.+?)\s*$/i);
     $ser = '"' . $ser . '"' if defined $is_quote;
     push @servers, $ser if defined $ser;
   }
