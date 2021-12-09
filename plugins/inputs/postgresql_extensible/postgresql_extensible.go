@@ -243,7 +243,6 @@ func (p *Postgresql) accRow(measName string, row scanner, acc telegraf.Accumulat
 		err        error
 		columnVars []interface{}
 		dbname     bytes.Buffer
-		tagAddress string
 		timestamp  time.Time
 	)
 
@@ -276,13 +275,11 @@ func (p *Postgresql) accRow(measName string, row scanner, acc telegraf.Accumulat
 		dbname.WriteString("postgres")
 	}
 
-	if tagAddress, err = p.SanitizedAddress(); err != nil {
-		return err
-	}
+	metas := p.GetConnMeta()
 
 	// Process the additional tags
 	tags := map[string]string{
-		"server": tagAddress,
+		"server": fmt.Sprintf("%s:%s", metas["host"], metas["port"]),
 		"db":     dbname.String(),
 	}
 
