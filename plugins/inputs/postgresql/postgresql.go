@@ -165,13 +165,8 @@ func (p *Postgresql) accRow(row scanner, acc telegraf.Accumulator, columns []str
 		dbname.WriteString("postgres")
 	}
 
-	var tagAddress string
-	tagAddress, err = p.SanitizedAddress()
-	if err != nil {
-		return err
-	}
-
-	tags := map[string]string{"server": tagAddress, "db": dbname.String()}
+	metas := p.GetConnMeta()
+	tags := map[string]string{"server": fmt.Sprintf("%s:%s", metas["host"], metas["port"]), "db": dbname.String()}
 
 	fields := make(map[string]interface{})
 	for col, val := range columnMap {

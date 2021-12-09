@@ -179,3 +179,26 @@ func (p *Service) SanitizedAddress() (sanitizedAddress string, err error) {
 
 	return sanitizedAddress, err
 }
+
+func (p *Service) GetConnMeta() map[string]string {
+	m := map[string]string{"host": "localhost", "port": "5432"}
+	var address string
+
+	if strings.HasPrefix(p.Address, "postgres://") || strings.HasPrefix(p.Address, "postgresql://") {
+		var err error
+		address, err = parseURL(p.Address)
+		if err != nil {
+			return m
+		}
+	} else {
+		address = p.Address
+	}
+
+	ls := strings.Split(address, " ")
+	for _, pair := range ls {
+		p := strings.SplitN(pair, "=", 2)
+		m[p[0]] = p[1]
+	}
+
+	return m
+}
