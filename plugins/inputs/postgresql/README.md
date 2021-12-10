@@ -45,10 +45,6 @@ A  list of databases to explicitly ignore.  If not specified, metrics for all da
 
   `ignored_databases = ["postgres", "template0", "template1"]`
 
-A list of databases to pull metrics about. If not specified, metrics for all databases are gathered.  Do NOT use with the 'ignored_databases' option.
-
-  `databases = ["app_production", "testing"]`
-
 ### TLS Configuration
 
 Add the `sslkey`, `sslcert` and `sslrootcert` options to your DSN:

@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/pgtype"
 	"github.com/jackc/pgx/stdlib"
 
-	"github.com/influxdata/telegraf"
+	_ "github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/internal"
 )
 
@@ -98,7 +98,7 @@ type Service struct {
 }
 
 // Start starts the ServiceInput's service, whatever that may be
-func (p *Service) Start(telegraf.Accumulator) (err error) {
+func (p *Service) Start() (err error) {
 	const localhost = "host=localhost sslmode=disable"
 
 	if p.Address == "" || p.Address == "localhost" {
@@ -197,8 +197,13 @@ func (p *Service) GetConnMeta() map[string]string {
 
 	ls := strings.Split(address, " ")
 	for _, pair := range ls {
-		p := strings.SplitN(pair, "=", 2)
-		m[p[0]] = p[1]
+		t := strings.SplitN(pair, "=", 2)
+		m[t[0]] = t[1]
+	}
+
+	// replace host with outputaddress
+	if p.Outputaddress != "" {
+		m["host"] = p.Outputaddress
 	}
 
 	return m
