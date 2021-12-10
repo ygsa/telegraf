@@ -24,11 +24,12 @@ The example below has two queries are specified, with the following parameters:
   # connection with the server and doesn't restrict the databases we are trying
   # to grab metrics for.
   #
-  address = "host=localhost user=postgres sslmode=disable"
-  # A list of databases to pull metrics about. If not specified, metrics for all
-  # databases are gathered.
-  # databases = ["app_production", "testing"]
-  #
+  servers = ["host=localhost user=postgres sslmode=disable"]
+
+  ## A  list of databases to explicitly ignore.  If not specified, metrics for all
+  ## databases are gathered.  Do NOT use with the 'databases' option.
+  # ignored_databases = ["postgres", "template0", "template1"]
+
   # Define the toml config where the sql queries are stored
   # New queries can be added, if the withdbname is set to true and there is no
   # databases defined in the 'databases field', the sql query is ended by a 'is
@@ -66,12 +67,12 @@ The example below has two queries are specified, with the following parameters:
   [[inputs.postgresql_extensible.query]]
     sqlquery="SELECT * FROM pg_stat_database where datname"
     version=901
-    withdbname=false
+    withignoredbname=false
     tagvalue=""
   [[inputs.postgresql_extensible.query]]
     script="your_sql-filepath.sql"
     version=901
-    withdbname=false
+    withignoredbname=false
     tagvalue=""
 ```
 
@@ -85,41 +86,41 @@ using postgresql extensions ([pg_stat_statements](http://www.postgresql.org/docs
 [[inputs.postgresql_extensible.query]]
   sqlquery="SELECT * FROM pg_stat_database"
   version=901
-  withdbname=false
+  withignoredbname=false
   tagvalue=""
 [[inputs.postgresql_extensible.query]]
   sqlquery="SELECT * FROM pg_stat_bgwriter"
   version=901
-  withdbname=false
+  withignoredbname=false
   tagvalue=""
 [[inputs.postgresql_extensible.query]]
   sqlquery="select * from sessions"
   version=901
-  withdbname=false
+  withignoredbname=false
   tagvalue="db,username,state"
 [[inputs.postgresql_extensible.query]]
   sqlquery="select setting as max_connections from pg_settings where \
   name='max_connections'"
   version=801
-  withdbname=false
+  withignoredbname=false
   tagvalue=""
 [[inputs.postgresql_extensible.query]]
   sqlquery="select * from pg_stat_kcache"
   version=901
-  withdbname=false
+  withignoredbname=false
   tagvalue=""
 [[inputs.postgresql_extensible.query]]
   sqlquery="select setting as shared_buffers from pg_settings where \
   name='shared_buffers'"
   version=801
-  withdbname=false
+  withignoredbname=false
   tagvalue=""
 [[inputs.postgresql_extensible.query]]
   sqlquery="SELECT db, count( distinct blocking_pid ) AS num_blocking_sessions,\
   count( distinct blocked_pid) AS num_blocked_sessions FROM \
   public.blocking_procs group by db"
   version=901
-  withdbname=false
+  withignoredbname=false
   tagvalue="db"
 [[inputs.postgresql_extensible.query]]
   sqlquery="""
@@ -128,7 +129,7 @@ using postgresql extensions ([pg_stat_statements](http://www.postgresql.org/docs
       GROUP BY type, enabled
   """
   version=901
-  withdbname=false
+  withignoredbname=false
   tagvalue="type,enabled"
 ```
 

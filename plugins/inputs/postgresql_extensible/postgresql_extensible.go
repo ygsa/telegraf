@@ -17,9 +17,11 @@ import (
 )
 
 type Postgresql struct {
-	postgresql.Service
-	Databases      []string
-	AdditionalTags []string
+	Servers           []string
+	Outputaddress     string
+	MaxLifetime       internal.Duration
+	IgnoredDatabases  []string
+	AdditionalTags    []string
 	Timestamp      string
 	Query          query
 	Debug          bool
@@ -28,10 +30,10 @@ type Postgresql struct {
 }
 
 type query []struct {
-	Sqlquery    string
-	Script      string
-	Version     int
-	Withdbname  bool
+	Sqlquery          string
+	Script            string
+	Version           int
+	Withignoredbname  bool
 	Tagvalue    string
 	Measurement string
 	Timestamp   string
@@ -52,22 +54,22 @@ var sampleConfig = `
   ## connection with the server and doesn't restrict the databases we are trying
   ## to grab metrics for.
   #
-  address = "host=localhost user=postgres sslmode=disable"
+  servers = ["host=localhost user=postgres sslmode=disable"]
 
   ## connection configuration.
   ## maxlifetime - specify the maximum lifetime of a connection.
   ## default is forever (0s)
   max_lifetime = "0s"
 
-  ## A list of databases to pull metrics about. If not specified, metrics for all
-  ## databases are gathered.
-  ## databases = ["app_production", "testing"]
-  #
   ## A custom name for the database that will be used as the "server" tag in the
-  ## measurement output. If not specified, a default one generated from
-  ## the connection address is used.
+  ## measurement output, and we'll add port to the outputaddress by default.
+  ## If not specified, the connection host and port are used.
   # outputaddress = "db01"
-  #
+
+  ## A  list of databases to explicitly ignore.  If not specified, metrics for all
+  ## databases are gathered.  Do NOT use with the 'databases' option.
+  # ignored_databases = ["postgres", "template0", "template1"]
+
   ## Define the toml config where the sql queries are stored
   ## New queries can be added, if the withdbname is set to true and there is no
   ## databases defined in the 'databases field', the sql query is ended by a
@@ -155,6 +157,18 @@ func ReadQueryFromFile(filePath string) (string, error) {
 }
 
 func (p *Postgresql) Gather(acc telegraf.Accumulator) error {
+	if len(p.Servers) == 0 {
+		return fmt.Errorf("no servers")
+	}
+
+	for _, serverAddress := range p.Servers {
+		acc.AddError(p.gatherServer(serverAddress, acc))
+	}
+
+	return nil
+}
+
+func (p *Postgresql) gatherServer(address string, acc telegraf.Accumulator) error {
 	var (
 		err        error
 		sqlQuery   string
@@ -167,9 +181,23 @@ func (p *Postgresql) Gather(acc telegraf.Accumulator) error {
 		columns    []string
 	)
 
+	s := postgresql.Service{
+		Address: address,
+		Outputaddress: p.Outputaddress,
+		MaxIdle: 1,
+		MaxOpen: 1,
+		MaxLifetime: p.MaxLifetime,
+		IsPgBouncer: false,
+	}
+
+	err = s.Start()
+	if err != nil {
+		return err
+	}
+
 	// Retrieving the database version
 	query = `SELECT setting::integer / 100 AS version FROM pg_settings WHERE name = 'server_version_num'`
-	if err = p.DB.QueryRow(query).Scan(&dbVersion); err != nil {
+	if err = s.DB.QueryRow(query).Scan(&dbVersion); err != nil {
 		dbVersion = 0
 	}
 
@@ -186,9 +214,9 @@ func (p *Postgresql) Gather(acc telegraf.Accumulator) error {
 			measName = "postgresql"
 		}
 
-		if p.Query[i].Withdbname {
-			if len(p.Databases) != 0 {
-				queryAddon = fmt.Sprintf(` IN ('%s')`, strings.Join(p.Databases, "','"))
+		if p.Query[i].Withignoredbname {
+			if len(p.IgnoredDatabases) != 0 {
+				queryAddon = fmt.Sprintf(` NOT IN ('%s')`, strings.Join(p.IgnoredDatabases, "','"))
 			} else {
 				queryAddon = " is not null"
 			}
@@ -198,7 +226,7 @@ func (p *Postgresql) Gather(acc telegraf.Accumulator) error {
 		sqlQuery += queryAddon
 
 		if p.Query[i].Version <= dbVersion {
-			rows, err := p.DB.Query(sqlQuery)
+			rows, err := s.DB.Query(sqlQuery)
 			if err != nil {
 				p.Log.Error(err.Error())
 				continue
@@ -223,7 +251,7 @@ func (p *Postgresql) Gather(acc telegraf.Accumulator) error {
 			p.Timestamp = timestamp
 
 			for rows.Next() {
-				err = p.accRow(measName, rows, acc, columns)
+				err = p.accRow(s, measName, rows, acc, columns)
 				if err != nil {
 					p.Log.Error(err.Error())
 					break
@@ -238,7 +266,7 @@ type scanner interface {
 	Scan(dest ...interface{}) error
 }
 
-func (p *Postgresql) accRow(measName string, row scanner, acc telegraf.Accumulator, columns []string) error {
+func (p *Postgresql) accRow(s postgresql.Service, measName string, row scanner, acc telegraf.Accumulator, columns []string) error {
 	var (
 		err        error
 		columnVars []interface{}
@@ -275,7 +303,7 @@ func (p *Postgresql) accRow(measName string, row scanner, acc telegraf.Accumulat
 		dbname.WriteString("postgres")
 	}
 
-	metas := p.GetConnMeta()
+	metas := s.GetConnMeta()
 
 	// Process the additional tags
 	tags := map[string]string{
@@ -331,15 +359,6 @@ COLUMN:
 
 func init() {
 	inputs.Add("postgresql_extensible", func() telegraf.Input {
-		return &Postgresql{
-			Service: postgresql.Service{
-				MaxIdle: 1,
-				MaxOpen: 1,
-				MaxLifetime: internal.Duration{
-					Duration: 0,
-				},
-				IsPgBouncer: false,
-			},
-		}
+		return &Postgresql{}
 	})
 }

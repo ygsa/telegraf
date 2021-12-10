@@ -14,8 +14,9 @@ import (
 )
 
 type Postgresql struct {
-	Service
-	Databases        []string
+	Servers          []string
+	Outputaddress    string
+	MaxLifetime      internal.Duration
 	IgnoredDatabases []string
 }
 
@@ -35,10 +36,14 @@ var sampleConfig = `
   ## connection with the server and doesn't restrict the databases we are trying
   ## to grab metrics for.
   ##
-  address = "host=localhost user=postgres sslmode=disable"
+  servers = ["host=localhost user=postgres sslmode=disable"]
   ## A custom name for the database that will be used as the "server" tag in the
   ## measurement output. If not specified, a default one generated from
   ## the connection address is used.
+
+  ## A custom name for the database that will be used as the "server" tag in the
+  ## measurement output, and we'll add port to the outputaddress by default.
+  ## If not specified, the connection host and port are used.
   # outputaddress = "db01"
 
   ## connection configuration.
@@ -50,9 +55,6 @@ var sampleConfig = `
   ## databases are gathered.  Do NOT use with the 'databases' option.
   # ignored_databases = ["postgres", "template0", "template1"]
 
-  ## A list of databases to pull metrics about. If not specified, metrics for all
-  ## databases are gathered.  Do NOT use with the 'ignored_databases' option.
-  # databases = ["app_production", "testing"]
 `
 
 func (p *Postgresql) SampleConfig() string {
@@ -68,23 +70,46 @@ func (p *Postgresql) IgnoredColumns() map[string]bool {
 }
 
 func (p *Postgresql) Gather(acc telegraf.Accumulator) error {
+	if len(p.Servers) == 0 {
+		return fmt.Errorf("no servers")
+	}
+
+	for _, serverAddress := range p.Servers {
+		acc.AddError(p.gatherServer(serverAddress, acc))
+	}
+
+	return nil
+}
+
+func (p *Postgresql) gatherServer(address string, acc telegraf.Accumulator) error {
 	var (
 		err     error
 		query   string
 		columns []string
 	)
 
-	if len(p.Databases) == 0 && len(p.IgnoredDatabases) == 0 {
+	s := Service{
+			Address: address,
+			Outputaddress: p.Outputaddress,
+			MaxIdle: 1,
+			MaxOpen: 1,
+			MaxLifetime: p.MaxLifetime,
+			IsPgBouncer: false,
+		}
+
+	err = s.Start()
+	if err != nil {
+		return err
+	}
+
+	if len(p.IgnoredDatabases) == 0 {
 		query = `SELECT * FROM pg_stat_database`
 	} else if len(p.IgnoredDatabases) != 0 {
 		query = fmt.Sprintf(`SELECT * FROM pg_stat_database WHERE datname NOT IN ('%s')`,
 			strings.Join(p.IgnoredDatabases, "','"))
-	} else {
-		query = fmt.Sprintf(`SELECT * FROM pg_stat_database WHERE datname IN ('%s')`,
-			strings.Join(p.Databases, "','"))
 	}
 
-	rows, err := p.DB.Query(query)
+	rows, err := s.DB.Query(query)
 	if err != nil {
 		return err
 	}
@@ -97,7 +122,7 @@ func (p *Postgresql) Gather(acc telegraf.Accumulator) error {
 	}
 
 	for rows.Next() {
-		err = p.accRow(rows, acc, columns)
+		err = p.accRow(s, rows, acc, columns)
 		if err != nil {
 			return err
 		}
@@ -105,7 +130,7 @@ func (p *Postgresql) Gather(acc telegraf.Accumulator) error {
 
 	query = `SELECT * FROM pg_stat_bgwriter`
 
-	bgWriterRow, err := p.DB.Query(query)
+	bgWriterRow, err := s.DB.Query(query)
 	if err != nil {
 		return err
 	}
@@ -118,7 +143,7 @@ func (p *Postgresql) Gather(acc telegraf.Accumulator) error {
 	}
 
 	for bgWriterRow.Next() {
-		err = p.accRow(bgWriterRow, acc, columns)
+		err = p.accRow(s, bgWriterRow, acc, columns)
 		if err != nil {
 			return err
 		}
@@ -131,7 +156,7 @@ type scanner interface {
 	Scan(dest ...interface{}) error
 }
 
-func (p *Postgresql) accRow(row scanner, acc telegraf.Accumulator, columns []string) error {
+func (p *Postgresql) accRow(s Service, row scanner, acc telegraf.Accumulator, columns []string) error {
 	var columnVars []interface{}
 	var dbname bytes.Buffer
 
@@ -165,7 +190,7 @@ func (p *Postgresql) accRow(row scanner, acc telegraf.Accumulator, columns []str
 		dbname.WriteString("postgres")
 	}
 
-	metas := p.GetConnMeta()
+	metas := s.GetConnMeta()
 	tags := map[string]string{"server": fmt.Sprintf("%s:%s", metas["host"], metas["port"]), "db": dbname.String()}
 
 	fields := make(map[string]interface{})
@@ -182,15 +207,6 @@ func (p *Postgresql) accRow(row scanner, acc telegraf.Accumulator, columns []str
 
 func init() {
 	inputs.Add("postgresql", func() telegraf.Input {
-		return &Postgresql{
-			Service: Service{
-				MaxIdle: 1,
-				MaxOpen: 1,
-				MaxLifetime: internal.Duration{
-					Duration: 0,
-				},
-				IsPgBouncer: false,
-			},
-		}
+		return &Postgresql{}
 	})
 }
