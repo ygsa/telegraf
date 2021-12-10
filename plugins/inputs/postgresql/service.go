@@ -140,7 +140,8 @@ func (p *Service) Start(telegraf.Accumulator) (err error) {
 	}
 
 	if p.DB, err = sql.Open("pgx", connectionString); err != nil {
-		return err
+		m := p.GetConnMeta()
+		return fmt.Errorf("%s:%s - %s", m["host"], m["port"], err.Error())
 	}
 
 	p.DB.SetMaxOpenConns(p.MaxOpen)
