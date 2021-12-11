@@ -31,6 +31,10 @@
       3307=222222   # pass for 3307 port
       ignore=3301,3303 # ignore 3301 and 3303 port
 
+      [postgresql]
+      is_local=1
+      user=postgres
+
       [redis]
       pass=xxxxx # default pass
       6379=xxxxx    # pass for 6379 port
@@ -551,7 +555,7 @@ sub is_support {
   my $self = shift;
   my $type = shift;
 
-  my @lists = qw(memcached redis pika mysql mongodb dns_query megacli iptables);
+  my @lists = qw(memcached redis pika mysql mongodb postgresql dns_query megacli iptables);
   foreach my $k (@lists) {
     return 1 if $k eq $type;
   }
@@ -679,6 +683,8 @@ sub get_server_list {
     "mongod"       => "mongodb",
     "mysqld"       => "mysql",
     "pika"         => "pika",
+    "postgres"     => "postgresql",
+    "postmaster"   => "postgresql",
   );
 
   # full lists
@@ -691,7 +697,7 @@ sub get_server_list {
 
   foreach my $k (split(/\n/, $res)) {
     # filter non-db program
-    next unless $k =~ m/(?:mysqld|memcached|redis-server|mongod|pika)/i;
+    next unless $k =~ m/(?:mysqld|memcached|redis-server|mongod|pika|postgres|postmaster)/i;
     my @items = split(/\s+/, $k, 7);
 
     local $_ = "$items[3] $items[-1]";
@@ -1229,6 +1235,89 @@ TEMP_END
   return _replace_pika($temp, $items);
 }
 
+sub _replace_postgresql {
+  my $temp  = shift;
+  my $items = shift;
+
+  my @servers;
+  foreach my $k (@$items) {
+    my $port = $k->{port};
+    my $user = $k->{user};
+    my $pass = $k->{pass};
+    my $host = $k->{is_local} > 0
+             ? 'localhost'
+             : '$IP';
+
+    my $dsn;
+    if (defined $pass) {
+      $dsn = '"'
+           . "postgres://" . "$user"
+           . ":" . "$pass" . '@'
+           . "$host" . ":" . "$port"
+           . "/postgres?sslmode=disable"
+           . '"';
+    }
+    else {
+      $dsn = '"'
+           . "postgres://" . "$user" . "@"
+           . "$host" . ":" . "$port"
+           . "/postgres?sslmode=disable"
+           . '"';
+    }
+
+    push @servers, $dsn;
+  }
+
+  return undef if @servers == 0;
+
+  my $out = join(", ", @servers);
+  $temp =~ s/{{instances}}/$out/g;
+
+  if ($items->[0]->{is_local} > 0) {
+    $temp =~ s/{{is_local}}//g;
+  }
+  else {
+    $temp =~ s/{{is_local}}/# /g;
+  }
+
+  return $temp;
+}
+
+sub disc_postgresql {
+  my $self  = shift;
+  my $items = shift;
+
+  my $temp = <<'TEMP_END';
+# Read metrics from one or many postgresql servers
+[[inputs.postgresql]]
+  ## specify address via a url matching:
+  ##   postgres://[pqgotest[:password]]@localhost[/dbname]\
+  ##       ?sslmode=[disable|verify-ca|verify-full]
+  ## or a simple string:
+  ##   host=localhost user=pqgotest password=... sslmode=... dbname=app_production
+  ##
+  ## All connection parameters are optional.
+  ##
+  servers = [{{instances}}]
+
+  ## A custom name for the database that will be used as the "server" tag in the
+  ## measurement output, and we'll add port to the outputaddress by default.
+  ## If not specified, the connection host and port are used.
+  {{is_local}}outputaddress = '$IP'
+
+  ## connection configuration.
+  ## maxlifetime - specify the maximum lifetime of a connection.
+  ## default is forever (0s)
+  max_lifetime = "0s"
+
+  ## A  list of databases to explicitly ignore.  If not specified, metrics for all
+  ## databases are gathered.  Do NOT use with the 'databases' option.
+  ignored_databases = ["postgres", "template0", "template1"]
+TEMP_END
+
+  return _replace_postgresql($temp, $items);
+}
+
 sub temp_outs {
   my $self  = shift;
   my $type  = shift;
@@ -1242,6 +1331,7 @@ sub temp_outs {
       'mongodb'   => $self->disc_mongodb($items),
       'redis'     => $self->disc_redis($items),
       'pika'      => $self->disc_pika($items),
+      'postgresql'=> $self->disc_postgresql($items),
     );
   }
 
@@ -1278,6 +1368,7 @@ sub gen_conf_for_listen {
 
     my $user = $secs->{user} || undef;
     my $pass = $secs->{$port} || $secs->{pass} || undef;
+    my $is_local = $secs->{is_local} || 0;
 
     if ($type eq 'mysql') {
       if (!defined($user) || !defined($pass)) {
@@ -1286,8 +1377,15 @@ sub gen_conf_for_listen {
       }
     }
 
+    if ($type eq 'postgresql') {
+      if (!defined($user)) {
+        Utils::time_print("ignore $type: $port. must set user for $type");
+	next;
+      }
+    }
+
     push @ports, $port;
-    push @items, {port => $port, user => $user, pass => $pass};
+    push @items, {port => $port, user => $user, pass => $pass, is_local => $is_local};
   }
 
   # create conf file
@@ -1315,7 +1413,7 @@ sub gen_conf_for_listen {
 
 sub _parse_ports {
   my $line = shift;
-  my @servers = ($line =~ m/\$IP:(\d+)/gi);
+  my @servers = ($line =~ m/(?:\$IP|127.0.0.1|localhost):(\d+)/gi);
   return @servers;
 }
 
