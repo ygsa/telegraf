@@ -101,6 +101,7 @@ func (p *Postgresql) gatherServer(address string, acc telegraf.Accumulator) erro
 	if err != nil {
 		return err
 	}
+	defer s.Stop()
 
 	if len(p.IgnoredDatabases) == 0 {
 		query = `SELECT * FROM pg_stat_database`

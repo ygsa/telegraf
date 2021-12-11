@@ -194,6 +194,7 @@ func (p *Postgresql) gatherServer(address string, acc telegraf.Accumulator) erro
 	if err != nil {
 		return err
 	}
+	defer s.Stop()
 
 	// Retrieving the database version
 	query = `SELECT setting::integer / 100 AS version FROM pg_settings WHERE name = 'server_version_num'`
