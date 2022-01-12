@@ -21,7 +21,7 @@ type Server struct {
 
 func (s *Server) getDefaultTags() map[string]string {
 	tags := make(map[string]string)
-	tags["hostname"] = s.URL.Host
+	tags["server"] = s.URL.Host
 	return tags
 }
 
@@ -279,6 +279,7 @@ func (s *Server) gatherData(acc telegraf.Accumulator, gatherClusterStatus bool, 
 			s.getDefaultTags(),
 		)
 		data.AddDefaultStats()
+		data.AddMetaInfo()
 		data.AddDbStats()
 		data.AddColStats()
 		data.AddShardHostStats()

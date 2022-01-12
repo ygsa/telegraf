@@ -316,7 +316,7 @@ func TestAddShardHostStats(t *testing.T) {
 			assert.True(t, acc.HasInt64Field("mongodb_shard_stats", key))
 		}
 
-		assert.True(t, acc.HasTag("mongodb_shard_stats", "hostname"))
+		assert.True(t, acc.HasTag("mongodb_shard_stats", "server"))
 		hostsFound = append(hostsFound, host)
 	}
 	sort.Strings(hostsFound)
