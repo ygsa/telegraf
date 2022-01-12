@@ -735,6 +735,7 @@ type StatLine struct {
 	NumConnections                           int64
 	ReplSetName                              string
 	NodeType                                 string
+	NodeTypeInt                              int64
 	NodeState                                string
 	NodeStateInt                             int64
 
@@ -1125,16 +1126,21 @@ func NewStatLine(oldMongo, newMongo MongoStatus, key string, all bool, sampleSec
 		// BEGIN code modification
 		if newStat.Repl.IsMaster.(bool) {
 			returnVal.NodeType = "PRI"
+			returnVal.NodeTypeInt = 1
 		} else if newStat.Repl.Secondary != nil && newStat.Repl.Secondary.(bool) {
 			returnVal.NodeType = "SEC"
+			returnVal.NodeTypeInt = 2
 		} else if newStat.Repl.ArbiterOnly != nil && newStat.Repl.ArbiterOnly.(bool) {
 			returnVal.NodeType = "ARB"
+			returnVal.NodeTypeInt = 7
 		} else {
 			returnVal.NodeType = "UNK"
+			returnVal.NodeTypeInt = 6
 		}
 		// END code modification
 	} else if returnVal.IsMongos {
 		returnVal.NodeType = "RTR"
+		returnVal.NodeTypeInt = 99
 	}
 
 	if oldStat.ExtraInfo != nil && newStat.ExtraInfo != nil &&
