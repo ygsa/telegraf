@@ -60,7 +60,21 @@ Processes can be selected for monitoring using one of several methods:
   ## the native finder performs the search directly in a manor dependent on the
   ## platform.  Default is 'pgrep'
   # pid_finder = "pgrep"
+
+  ## On most platform, process io, fd and mem requires root access.
+  ## Setting 'use sudo' to true will make use of sudo to run procgather.
+  ## Sudo must be configured to allow the telegraf user to run procgather
+  ## without a password.
+  # use_sudo = false
+
+  ## Specify the path to the procgather executable
+  # path_procgather = "/usr/bin/procgather"
+
+  ## Timeout for the procgather command to complete.
+  # timeout = "3s"
 ```
+
+*NOTE*: some metrics requires root access, you must install `procgather` when enable `use_sudo`.
 
 #### Windows support
 

@@ -3,6 +3,8 @@
 /telegraf
 /telegraf.exe
 /telegraf.gz
+/procgather
+/procgather.exe
 /vendor
 .DS_Store
 process.yml
