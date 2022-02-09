@@ -267,6 +267,10 @@ Defaults!IPTABLESSHOW !logfile, !syslog, !pam_session
 Cmnd_Alias IPTABLESSUM = /sbin/iptables -nvL *
 telegraf	ALL=(root)	NOPASSWD: IPTABLESSUM
 Defaults!IPTABLESSUM !logfile, !syslog, !pam_session
+
+Cmnd_Alias PROCGATHER = /usr/bin/procgather *
+telegraf	ALL=(root)	NOPASSWD: PROCGATHER
+Defaults!PROCGATHER !logfile, !syslog, !pam_session
 EOF
 
 if ! visudo -c -f /etc/sudoers.d/telegraf >/dev/null 2>&1; then
@@ -282,6 +286,10 @@ Defaults!IPTABLESSHOW !logfile, !syslog
 Cmnd_Alias IPTABLESSUM = /sbin/iptables -nvL *
 telegraf	ALL=(root)	NOPASSWD: IPTABLESSUM
 Defaults!IPTABLESSUM !logfile, !syslog
+
+Cmnd_Alias PROCGATHER = /usr/bin/procgather *
+telegraf	ALL=(root)	NOPASSWD: PROCGATHER
+Defaults!PROCGATHER !logfile, !syslog, !pam_session
 EOF
 fi
 

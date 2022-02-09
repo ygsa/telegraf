@@ -64,6 +64,7 @@ pkgdir ?= build/dist
 .PHONY: all
 all:
 	@$(MAKE) deps
+	@${MAKE} procgather
 	@$(MAKE) telegraf
 
 .PHONY: help
@@ -72,6 +73,7 @@ help:
 	@echo '  all        - download dependencies and compile telegraf binary'
 	@echo '  deps       - download dependencies'
 	@echo '  telegraf   - compile telegraf binary'
+	@echo '  procgather - compile procgather binary'
 	@echo '  test       - run short unit tests'
 	@echo '  fmt        - format source files'
 	@echo '  tidy       - tidy go modules'
@@ -89,6 +91,10 @@ deps:
 .PHONY: telegraf
 telegraf:
 	go build -ldflags "$(LDFLAGS)" ./cmd/telegraf
+
+.PHONY: procgather
+procgather:
+	go build -ldflags "$(LDFLAGS)" ./utils/procgather.go
 
 # Used by dockerfile builds
 .PHONY: go-install
@@ -164,6 +170,8 @@ check-deps:
 clean:
 	rm -f telegraf
 	rm -f telegraf.exe
+	rm -f procgather
+	rm -f procgather.exe
 	rm -rf build
 
 .PHONY: docker-image
@@ -197,6 +205,7 @@ install: $(buildbin)
 	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(localstatedir)/log/telegraf; fi
 	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(sysconfdir)/telegraf/telegraf.d; fi
 	@cp -fv $(buildbin) $(DESTDIR)$(bindir)
+	@cp -fv $(procgatherbin) $(DESTDIR)$(bindir)
 	@if [ $(GOOS) != "windows" ]; then cp -fv etc/telegraf.conf $(DESTDIR)$(sysconfdir)/telegraf/telegraf.conf$(conf_suffix); fi
 	@if [ $(GOOS) != "windows" ]; then cp -fv etc/logrotate.d/telegraf $(DESTDIR)$(sysconfdir)/logrotate.d; fi
 	@if [ $(GOOS) = "windows" ]; then cp -fv etc/telegraf_windows.conf $(DESTDIR)/telegraf.conf; fi
@@ -212,6 +221,7 @@ install: $(buildbin)
 # directory.
 $(buildbin):
 	@mkdir -pv $(dir $@)
+	go build -o $(dir $@) -ldflags "$(LDFLAGS)" ./utils/procgather.go
 	go build -o $(dir $@) -ldflags "$(LDFLAGS)" ./cmd/telegraf
 
 ifdef mips
@@ -459,4 +469,5 @@ upload-nightly:
 
 %.deb %.rpm %.tar.gz %.zip: export DESTDIR = build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)-$(pkg)/telegraf-$(version)
 %.deb %.rpm %.tar.gz %.zip: export buildbin = build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)/telegraf$(EXEEXT)
+%.deb %.rpm %.tar.gz %.zip: export procgatherbin = build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)/procgather$(EXEEXT)
 %.deb %.rpm %.tar.gz %.zip: export LDFLAGS = -w -s
