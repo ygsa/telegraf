@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/influxdata/telegraf"
+	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"github.com/shirou/gopsutil/process"
 )
@@ -45,6 +48,11 @@ type Procstat struct {
 	createPIDFinder func() (PIDFinder, error)
 	procs           map[PID]Process
 	createProcess   func(PID) (Process, error)
+
+	PathProcgather string          `toml:path_procgather`
+	UseSudo        bool            `toml:use_sudo`
+	Timeout        config.Duration `toml:timeout`
+	Log            telegraf.Logger `toml:"-"`
 }
 
 var sampleConfig = `
@@ -90,6 +98,18 @@ var sampleConfig = `
   ## the native finder performs the search directly in a manor dependent on the
   ## platform.  Default is 'pgrep'
   # pid_finder = "pgrep"
+
+  ## On most platform, process io, fd and mem requires root access.
+  ## Setting 'use sudo' to true will make use of sudo to run procgather.
+  ## Sudo must be configured to allow the telegraf user to run procgather
+  ## without a password.
+  # use_sudo = false
+
+  ## Specify the path to the procgather executable
+  # path_procgather = "/usr/bin/procgather"
+
+  ## Timeout for the procgather command to complete.
+  # timeout = "3s"
 `
 
 func (p *Procstat) SampleConfig() string {
@@ -98,6 +118,21 @@ func (p *Procstat) SampleConfig() string {
 
 func (p *Procstat) Description() string {
 	return "Monitor process cpu and memory usage"
+}
+
+func fileExists(file string) bool {
+	info, err := os.Stat(file)
+
+	if os.IsNotExist(err) {
+		return false
+	}
+
+	// maybe permission err
+	if err != nil {
+		return false
+	}
+
+	return !info.IsDir()
 }
 
 func (p *Procstat) Gather(acc telegraf.Accumulator) error {
@@ -157,14 +192,36 @@ func (p *Procstat) Gather(acc telegraf.Accumulator) error {
 	return nil
 }
 
+// Wrap with sudo
+var runCmd = func(timeout config.Duration, sudo bool, command string, args ...string) ([]byte, error) {
+	cmd := exec.Command(command, args...)
+	if sudo {
+		cmd = exec.Command("sudo", append([]string{"-n", command}, args...)...)
+	}
+	return internal.CombinedOutputTimeout(cmd, time.Duration(timeout))
+}
+
+func formatValue(v string) interface{} {
+	if strings.Contains(v, ".") {
+		f, err := strconv.ParseFloat(v, 64)
+		if err == nil {
+			return f
+		}
+	} else {
+		i, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			return i
+		}
+	}
+	return v
+}
+
 // Add metrics a single Process
 func (p *Procstat) addMetric(proc Process, acc telegraf.Accumulator, t time.Time) {
 	var prefix string
 	if p.Prefix != "" {
 		prefix = p.Prefix + "_"
 	}
-
-	fields := map[string]interface{}{}
 
 	//If process_name tag is not already set, set to actual name
 	if _, nameInTags := proc.Tags()["process_name"]; !nameInTags {
@@ -182,11 +239,6 @@ func (p *Procstat) addMetric(proc Process, acc telegraf.Accumulator, t time.Time
 		}
 	}
 
-	//If pid is not present as a tag, include it as a field.
-	if _, pidInTags := proc.Tags()["pid"]; !pidInTags {
-		fields["pid"] = int32(proc.PID())
-	}
-
 	//If cmd_line tag is true and it is not already set add cmdline as a tag
 	if p.CmdLineTag {
 		if _, ok := proc.Tags()["cmdline"]; !ok {
@@ -197,123 +249,156 @@ func (p *Procstat) addMetric(proc Process, acc telegraf.Accumulator, t time.Time
 		}
 	}
 
-	numThreads, err := proc.NumThreads()
-	if err == nil {
-		fields[prefix+"num_threads"] = numThreads
+	fields := map[string]interface{}{}
+	//If pid is not present as a tag, include it as a field.
+	if _, pidInTags := proc.Tags()["pid"]; !pidInTags {
+		fields["pid"] = int32(proc.PID())
 	}
 
-	fds, err := proc.NumFDs()
-	if err == nil {
-		fields[prefix+"num_fds"] = fds
-	}
+	if p.UseSudo {
+		procPid := fmt.Sprintf("%d", proc.PID())
+		var out []byte
+		var err error
 
-	ctx, err := proc.NumCtxSwitches()
-	if err == nil {
-		fields[prefix+"voluntary_context_switches"] = ctx.Voluntary
-		fields[prefix+"involuntary_context_switches"] = ctx.Involuntary
-	}
-
-	faults, err := proc.PageFaults()
-	if err == nil {
-		fields[prefix+"minor_faults"] = faults.MinorFaults
-		fields[prefix+"major_faults"] = faults.MajorFaults
-		fields[prefix+"child_minor_faults"] = faults.ChildMinorFaults
-		fields[prefix+"child_major_faults"] = faults.ChildMajorFaults
-	}
-
-	io, err := proc.IOCounters()
-	if err == nil {
-		fields[prefix+"read_count"] = io.ReadCount
-		fields[prefix+"write_count"] = io.WriteCount
-		fields[prefix+"read_bytes"] = io.ReadBytes
-		fields[prefix+"write_bytes"] = io.WriteBytes
-	}
-
-	createdAt, err := proc.CreateTime() //Returns epoch in ms
-	if err == nil {
-		fields[prefix+"created_at"] = createdAt * 1000000 //Convert ms to ns
-	}
-
-	cpuTime, err := proc.Times()
-	if err == nil {
-		fields[prefix+"cpu_time_user"] = cpuTime.User
-		fields[prefix+"cpu_time_system"] = cpuTime.System
-		fields[prefix+"cpu_time_idle"] = cpuTime.Idle
-		fields[prefix+"cpu_time_nice"] = cpuTime.Nice
-		fields[prefix+"cpu_time_iowait"] = cpuTime.Iowait
-		fields[prefix+"cpu_time_irq"] = cpuTime.Irq
-		fields[prefix+"cpu_time_soft_irq"] = cpuTime.Softirq
-		fields[prefix+"cpu_time_steal"] = cpuTime.Steal
-		fields[prefix+"cpu_time_guest"] = cpuTime.Guest
-		fields[prefix+"cpu_time_guest_nice"] = cpuTime.GuestNice
-	}
-
-	cpuPerc, err := proc.Percent(time.Duration(0))
-	if err == nil {
-		if p.solarisMode {
-			fields[prefix+"cpu_usage"] = cpuPerc / float64(runtime.NumCPU())
+		if p.Prefix != "" {
+			out, err = runCmd(p.Timeout, p.UseSudo, p.PathProcgather, "-pid", procPid, "-all", "-prefix", p.Prefix)
 		} else {
-			fields[prefix+"cpu_usage"] = cpuPerc
+			out, err = runCmd(p.Timeout, p.UseSudo, p.PathProcgather, "-pid", procPid, "-all")
 		}
-	}
 
-	mem, err := proc.MemoryInfo()
-	if err == nil {
-		fields[prefix+"memory_rss"] = mem.RSS
-		fields[prefix+"memory_vms"] = mem.VMS
-		fields[prefix+"memory_swap"] = mem.Swap
-		fields[prefix+"memory_data"] = mem.Data
-		fields[prefix+"memory_stack"] = mem.Stack
-		fields[prefix+"memory_locked"] = mem.Locked
-	}
-
-	memPerc, err := proc.MemoryPercent()
-	if err == nil {
-		fields[prefix+"memory_usage"] = memPerc
-	}
-
-	rlims, err := proc.RlimitUsage(true)
-	if err == nil {
-		for _, rlim := range rlims {
-			var name string
-			switch rlim.Resource {
-			case process.RLIMIT_CPU:
-				name = "cpu_time"
-			case process.RLIMIT_DATA:
-				name = "memory_data"
-			case process.RLIMIT_STACK:
-				name = "memory_stack"
-			case process.RLIMIT_RSS:
-				name = "memory_rss"
-			case process.RLIMIT_NOFILE:
-				name = "num_fds"
-			case process.RLIMIT_MEMLOCK:
-				name = "memory_locked"
-			case process.RLIMIT_AS:
-				name = "memory_vms"
-			case process.RLIMIT_LOCKS:
-				name = "file_locks"
-			case process.RLIMIT_SIGPENDING:
-				name = "signals_pending"
-			case process.RLIMIT_NICE:
-				name = "nice_priority"
-			case process.RLIMIT_RTPRIO:
-				name = "realtime_priority"
-			default:
-				continue
-			}
-
-			fields[prefix+"rlimit_"+name+"_soft"] = rlim.Soft
-			fields[prefix+"rlimit_"+name+"_hard"] = rlim.Hard
-			if name != "file_locks" { // gopsutil doesn't currently track the used file locks count
-				fields[prefix+name] = rlim.Used
+		if err == nil {
+			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+			for _, line := range lines {
+				if len(line) == 0 {
+					continue
+				}
+				stats := strings.SplitN(line, " ", 2)
+				if len(stats) < 2 {
+					continue
+				}
+				fields[stats[0]] = formatValue(stats[1])
 			}
 		}
-	}
+	} else {
 
-	ppid, err := proc.Ppid()
-	if err == nil {
-		fields[prefix+"ppid"] = ppid
+		numThreads, err := proc.NumThreads()
+		if err == nil {
+			fields[prefix+"num_threads"] = numThreads
+		}
+
+		fds, err := proc.NumFDs()
+		if err == nil {
+			fields[prefix+"num_fds"] = fds
+		}
+
+		ctx, err := proc.NumCtxSwitches()
+		if err == nil {
+			fields[prefix+"voluntary_context_switches"] = ctx.Voluntary
+			fields[prefix+"involuntary_context_switches"] = ctx.Involuntary
+		}
+
+		faults, err := proc.PageFaults()
+		if err == nil {
+			fields[prefix+"minor_faults"] = faults.MinorFaults
+			fields[prefix+"major_faults"] = faults.MajorFaults
+			fields[prefix+"child_minor_faults"] = faults.ChildMinorFaults
+			fields[prefix+"child_major_faults"] = faults.ChildMajorFaults
+		}
+
+		io, err := proc.IOCounters()
+		if err == nil {
+			fields[prefix+"read_count"] = io.ReadCount
+			fields[prefix+"write_count"] = io.WriteCount
+			fields[prefix+"read_bytes"] = io.ReadBytes
+			fields[prefix+"write_bytes"] = io.WriteBytes
+		}
+
+		createdAt, err := proc.CreateTime() //Returns epoch in ms
+		if err == nil {
+			fields[prefix+"created_at"] = createdAt * 1000000 //Convert ms to ns
+		}
+
+		cpuTime, err := proc.Times()
+		if err == nil {
+			fields[prefix+"cpu_time_user"] = cpuTime.User
+			fields[prefix+"cpu_time_system"] = cpuTime.System
+			fields[prefix+"cpu_time_idle"] = cpuTime.Idle
+			fields[prefix+"cpu_time_nice"] = cpuTime.Nice
+			fields[prefix+"cpu_time_iowait"] = cpuTime.Iowait
+			fields[prefix+"cpu_time_irq"] = cpuTime.Irq
+			fields[prefix+"cpu_time_soft_irq"] = cpuTime.Softirq
+			fields[prefix+"cpu_time_steal"] = cpuTime.Steal
+			fields[prefix+"cpu_time_guest"] = cpuTime.Guest
+			fields[prefix+"cpu_time_guest_nice"] = cpuTime.GuestNice
+		}
+
+		cpuPerc, err := proc.Percent(time.Duration(0))
+		if err == nil {
+			if p.solarisMode {
+				fields[prefix+"cpu_usage"] = cpuPerc / float64(runtime.NumCPU())
+			} else {
+				fields[prefix+"cpu_usage"] = cpuPerc
+			}
+		}
+
+		mem, err := proc.MemoryInfo()
+		if err == nil {
+			fields[prefix+"memory_rss"] = mem.RSS
+			fields[prefix+"memory_vms"] = mem.VMS
+			fields[prefix+"memory_swap"] = mem.Swap
+			fields[prefix+"memory_data"] = mem.Data
+			fields[prefix+"memory_stack"] = mem.Stack
+			fields[prefix+"memory_locked"] = mem.Locked
+		}
+
+		memPerc, err := proc.MemoryPercent()
+		if err == nil {
+			fields[prefix+"memory_usage"] = memPerc
+		}
+
+		rlims, err := proc.RlimitUsage(true)
+		if err == nil {
+			for _, rlim := range rlims {
+				var name string
+				switch rlim.Resource {
+				case process.RLIMIT_CPU:
+					name = "cpu_time"
+				case process.RLIMIT_DATA:
+					name = "memory_data"
+				case process.RLIMIT_STACK:
+					name = "memory_stack"
+				case process.RLIMIT_RSS:
+					name = "memory_rss"
+				case process.RLIMIT_NOFILE:
+					name = "num_fds"
+				case process.RLIMIT_MEMLOCK:
+					name = "memory_locked"
+				case process.RLIMIT_AS:
+					name = "memory_vms"
+				case process.RLIMIT_LOCKS:
+					name = "file_locks"
+				case process.RLIMIT_SIGPENDING:
+					name = "signals_pending"
+				case process.RLIMIT_NICE:
+					name = "nice_priority"
+				case process.RLIMIT_RTPRIO:
+					name = "realtime_priority"
+				default:
+					continue
+				}
+
+				fields[prefix+"rlimit_"+name+"_soft"] = rlim.Soft
+				fields[prefix+"rlimit_"+name+"_hard"] = rlim.Hard
+				if name != "file_locks" { // gopsutil doesn't currently track the used file locks count
+					fields[prefix+name] = rlim.Used
+				}
+			}
+		}
+
+		ppid, err := proc.Ppid()
+		if err == nil {
+			fields[prefix+"ppid"] = ppid
+		}
 	}
 
 	acc.AddFields("procstat", fields, proc.Tags(), t)
@@ -481,9 +566,29 @@ func (p *Procstat) winServicePIDs() ([]PID, error) {
 }
 
 func (p *Procstat) Init() error {
+	var err error
+
 	if strings.ToLower(p.Mode) == "solaris" {
 		p.solarisMode = true
 	}
+
+	if p.UseSudo {
+		if len(p.PathProcgather) > 0 {
+			if !fileExists(p.PathProcgather) {
+				p.Log.Warn("procgather is not exist or permission deny")
+			}
+		} else {
+			p.PathProcgather, err = exec.LookPath("procgather")
+			if err != nil {
+				p.PathProcgather = ""
+				p.Log.Warn("procgather not found: verify that procgather is installed and is in your PATH")
+			}
+		}
+	}
+
+        if p.Timeout == 0 {
+                p.Timeout = config.Duration(time.Second * 3)
+        }
 
 	return nil
 }
