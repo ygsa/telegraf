@@ -62,7 +62,6 @@ use warnings;
 use POSIX qw(strftime);
 use Getopt::Long;
 use Carp;
-use encoding "utf8";
 
 BEGIN {
    $INC{$_} = __FILE__ for map { (my $pkg = "$_.pm") =~ s!::!/!g; $pkg } (qw(
