@@ -44,15 +44,19 @@ func TestNetStats(t *testing.T) {
 	netstats := []net.ConnectionStat{
 		{
 			Type: syscall.SOCK_DGRAM,
+			Laddr: net.Addr{IP: "0.0.0.0", Port: 2003},
 		},
 		{
 			Status: "ESTABLISHED",
+			Laddr: net.Addr{IP: "10.0.0.2", Port: 2003},
 		},
 		{
 			Status: "ESTABLISHED",
+			Laddr: net.Addr{IP: "10.0.0.2", Port: 2003},
 		},
 		{
 			Status: "CLOSE",
+			Laddr: net.Addr{IP: "10.0.0.3", Port: 2003},
 		},
 	}
 
@@ -107,6 +111,10 @@ func TestNetStats(t *testing.T) {
 		"udp_socket":      1,
 	}
 	acc.AssertContainsTaggedFields(t, "netstat", fields3, make(map[string]string))
+
+	// netport
+	err = (&NetPorts{&mps, []uint32{2003}}).Gather(&acc)
+	acc.AssertContainsTaggedFields(t, "netport", fields3, map[string]string{"port": "2003"})
 
 	acc.Metrics = nil
 	err = (&NetIOStats{ps: &mps, IgnoreProtocolStats: true}).Gather(&acc)

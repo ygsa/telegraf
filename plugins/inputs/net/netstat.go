@@ -43,6 +43,7 @@ func (ns *NetStats) Gather(acc telegraf.Accumulator) error {
 			counts[netcon.Status] = 0
 		}
 		counts[netcon.Status] = c + 1
+
 	}
 
 	fields := map[string]interface{}{
