@@ -65,6 +65,7 @@ pkgdir ?= build/dist
 all:
 	@$(MAKE) deps
 	@${MAKE} procgather
+	@${MAKE} consul-kv
 	@$(MAKE) telegraf
 
 .PHONY: help
@@ -74,6 +75,7 @@ help:
 	@echo '  deps       - download dependencies'
 	@echo '  telegraf   - compile telegraf binary'
 	@echo '  procgather - compile procgather binary'
+	@echo '  consul-kv  - compile consul-kv binary'
 	@echo '  test       - run short unit tests'
 	@echo '  fmt        - format source files'
 	@echo '  tidy       - tidy go modules'
@@ -95,6 +97,10 @@ telegraf:
 .PHONY: procgather
 procgather:
 	go build -ldflags "$(LDFLAGS)" ./utils/procgather.go
+
+.PHONY: consul-kv
+consul-kv:
+	go build -ldflags "$(LDFLAGS)" ./utils/consul-kv.go
 
 # Used by dockerfile builds
 .PHONY: go-install
@@ -172,6 +178,8 @@ clean:
 	rm -f telegraf.exe
 	rm -f procgather
 	rm -f procgather.exe
+	rm -f consul-kv
+	rm -f consul-kv.exe
 	rm -rf build
 
 .PHONY: docker-image
@@ -206,6 +214,7 @@ install: $(buildbin)
 	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(sysconfdir)/telegraf/telegraf.d; fi
 	@cp -fv $(buildbin) $(DESTDIR)$(bindir)
 	@cp -fv $(procgatherbin) $(DESTDIR)$(bindir)
+	@cp -fv $(consul-kvbin) $(DESTDIR)$(bindir)
 	@if [ $(GOOS) != "windows" ]; then cp -fv etc/telegraf.conf $(DESTDIR)$(sysconfdir)/telegraf/telegraf.conf$(conf_suffix); fi
 	@if [ $(GOOS) != "windows" ]; then cp -fv etc/logrotate.d/telegraf $(DESTDIR)$(sysconfdir)/logrotate.d; fi
 	@if [ $(GOOS) = "windows" ]; then cp -fv etc/telegraf_windows.conf $(DESTDIR)/telegraf.conf; fi
@@ -470,4 +479,5 @@ upload-nightly:
 %.deb %.rpm %.tar.gz %.zip: export DESTDIR = build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)-$(pkg)/telegraf-$(version)
 %.deb %.rpm %.tar.gz %.zip: export buildbin = build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)/telegraf$(EXEEXT)
 %.deb %.rpm %.tar.gz %.zip: export procgatherbin = build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)/procgather$(EXEEXT)
+%.deb %.rpm %.tar.gz %.zip: export consul-kvbin = build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)/consul-kv$(EXEEXT)
 %.deb %.rpm %.tar.gz %.zip: export LDFLAGS = -w -s
