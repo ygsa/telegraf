@@ -135,7 +135,7 @@ if (defined $consul) {
   # check consul server is ok
   croak "no alive consul server, will exit..." unless defined $consul->{servers};
 
-  $discover = $consul->get_key_from_consul('discover', 0);
+  $discover = $consul->get_key_from_consul({ tag => 'discover' }, 0);
   Utils::create_dir_if("$confd") 
       or croak "create $confd error and $confd is not exist";
 }
@@ -1121,7 +1121,10 @@ sub make_consul_request {
 
 sub get_consul_key {
   my $self = shift;
-  my $tag  = shift;
+  my $meta  = shift;
+
+  my $tag = $meta->{tag};
+  my $is_input = $meta->{is_input} || 0;
 
   my $metas = Utils::get_default_meta($self->{default});
   my $team  = $metas->{team} || 'NULL';
@@ -1145,19 +1148,9 @@ sub get_consul_key {
     push @keys, "telegraf/$team/$mark/inputs/_lists_";
   }
 
-  if ($tag eq 'procstat') {
-    push @keys, "telegraf/$team/$mark/inputs/procstat/$ip";
-    push @keys, "telegraf/$team/$mark/inputs/procstat/default";
-  }
-
-  if ($tag eq 'megacli') {
-    push @keys, "telegraf/$team/$mark/inputs/megacli/$ip";
-    push @keys, "telegraf/$team/$mark/inputs/megacli/default";
-  }
-
-  if ($tag eq 'exec') {
-    push @keys, "telegraf/$team/$mark/inputs/exec/$ip";
-    push @keys, "telegraf/$team/$mark/inputs/exec/default";
+  if ($is_input) {
+    push @keys, "telegraf/$team/$mark/inputs/$tag/$ip";
+    push @keys, "telegraf/$team/$mark/inputs/$tag/default";
   }
 
   return @keys;
@@ -1165,10 +1158,10 @@ sub get_consul_key {
 
 sub get_key_from_consul {
   my $self    = shift;
-  my $tag     = shift;
+  my $meta    = shift;
   my $minute  = shift || 0;
 
-  my ($key1, $key2) = $self->get_consul_key($tag);
+  my ($key1, $key2) = $self->get_consul_key($meta);
   return undef if (!defined($key1) && !defined($key2));
 
   my $result = undef;;
@@ -1226,7 +1219,7 @@ sub gen_new_interval_conf {
   my $self = shift;
 
   my $interval_default = $self->get_telegraf_list_interval();
-  my $interval_consul  = Utils::parsecfg($self->get_key_from_consul('interval', 2));
+  my $interval_consul  = Utils::parsecfg($self->get_key_from_consul({ tag => 'interval' }, 2));
 
   my $counter = 0;
   foreach my $k (keys %{$interval_consul}) {
@@ -1245,7 +1238,7 @@ sub gen_new_interval_conf {
 sub get_input_list_from_consul {
   my $self   = shift;
 
-  my $value  = $self->get_key_from_consul('inputs', 0);
+  my $value  = $self->get_key_from_consul({ tag => 'inputs' }, 0);
   return undef unless defined $value;
 
   $value =~ s/'|"//g;
@@ -1259,7 +1252,7 @@ sub gen_new_inputs_conf {
   my $counter = 0;
   foreach my $k (@inputs) {
     my $conf  = $self->{confd} . "/" . "$k" . "-auto.conf";
-    my $value = $self->get_key_from_consul($k, 2);
+    my $value = $self->get_key_from_consul({ tag => $k, is_input => 1}, 2);
     next unless defined $value;
 
     Utils::time_print("generate input conf: $conf");
