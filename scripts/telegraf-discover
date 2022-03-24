@@ -83,7 +83,7 @@ my $confd   = "/etc/telegraf/telegraf.d";
 my $default = "/etc/default/telegraf";
 my $disf  = "/etc/telegraf/discover.conf";
 my $token = "";
-my $server= ["localhost:8500"];
+my $server;
 my $jitter= 5; # sleep random seconds
 
 GetOptions(
@@ -112,6 +112,11 @@ sub usage {
 if (defined $jitter && $jitter > 0) {
   sleep(int(rand($jitter)));
 }
+
+# option always prefer default config
+my $default_meta = Utils::get_default_meta($default);
+$token  ||= $default_meta->{token};
+$server ||= $default_meta->{server} || ["localhost:8500"];
 
 my $consul = Consul->new(
     conf    => $conf,
@@ -258,6 +263,7 @@ use POSIX qw(strftime);
 use File::Path;
 use File::Find;
 use File::Basename;
+use Sys::Hostname;
 use IO::Socket::INET;
 use HTTPTiny;
 use JSONTiny;
@@ -723,6 +729,44 @@ sub _return_string {
   return \%outs;
 }
 
+sub _default_server_value {
+  my $v = shift;
+
+  my @k = split(/,\s*/, $v);
+  return \@k;
+}
+
+sub get_default_meta {
+  my $conf = shift || '/etc/default/telegraf';
+
+  my $err;
+  open my $fh, '<', $conf or $err = "$!";
+
+  unless (defined $fh) {
+     time_print("open $conf error: $err");
+     return undef;
+  };
+
+  my %meta;
+  $meta{host} = hostname();
+  while(<$fh>) {
+    chomp;
+    s/(?:\x{22}|\x{27})//g;
+
+    my ($t, $v) = split(/\s*=\s*/, $_, 2);
+    if ($t =~ /^server$/i) {
+      $meta{lc($t)} = _default_server_value($v);
+    }
+    else {
+      $meta{lc($t)} = $v;
+    }
+  }
+
+  close $fh;
+
+  return \%meta;
+}
+
 1;
 
 # ########################################################
@@ -737,7 +781,6 @@ use File::Copy qw(copy);
 use File::Basename;
 use Utils;
 use MIME::Base64;
-use Sys::Hostname;
 use HTTPTiny;
 use JSONTiny;
 use IO::Socket::INET;
@@ -831,33 +874,6 @@ sub get_graphite_server {
   }
 
   return \@servers;
-}
-
-sub get_telegraf_meta {
-  my $self = shift;
-  my $conf = $self->{default};
-
-  my $err;
-  open my $fh, '<', $conf or $err = "$!";
-
-  unless (defined $fh) {
-     Utils::time_print("open $conf error: $err");
-     return undef;
-  };
-
-  my %meta;
-  $meta{host} = hostname();
-  while(<$fh>) {
-    chomp;
-    s/"//g;
-
-    my ($t, $v) = split(/\s*=\s*/, $_, 2);
-    $meta{lc($t)} = $v;
-  }
-
-  close $fh;
-
-  return \%meta;
 }
 
 sub get_telegraf_list {
@@ -1033,7 +1049,7 @@ sub send_custom_to_graphite {
   my $value  = shift;
   my $servers = _get_alive_server($self->get_graphite_server());
 
-  my $metas = $self->get_telegraf_meta();
+  my $metas = Utils::get_default_meta($self->{default});
   my $line  = _make_line($metas, $metric, $value);
   return 0 unless defined $line;
   
@@ -1107,7 +1123,7 @@ sub get_consul_key {
   my $self = shift;
   my $tag  = shift;
 
-  my $metas = $self->get_telegraf_meta();
+  my $metas = Utils::get_default_meta($self->{default});
   my $team  = $metas->{team} || 'NULL';
   my $mark  = $metas->{mark} || 'NULL';
   my $ip    = $metas->{ip} || 'NULL';
