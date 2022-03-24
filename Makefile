@@ -231,6 +231,7 @@ install: $(buildbin)
 $(buildbin):
 	@mkdir -pv $(dir $@)
 	go build -o $(dir $@) -ldflags "$(LDFLAGS)" ./utils/procgather.go
+	go build -o $(dir $@) -ldflags "$(LDFLAGS)" ./utils/consul-kv.go
 	go build -o $(dir $@) -ldflags "$(LDFLAGS)" ./cmd/telegraf
 
 ifdef mips

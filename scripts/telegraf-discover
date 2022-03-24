@@ -124,6 +124,7 @@ my $consul = Consul->new(
     default => $default,
     servers => $server,
     token   => $token,
+    update  => $update,
     timeout => 3,
   );
 
@@ -795,7 +796,9 @@ sub new {
   $self->{default} = $args{default} || '/etc/default/telegraf';
   $self->{servers} = _get_alive_server($args{servers}) || undef;
   $self->{token}   = $args{token} || '';
+  $self->{update}  = $args{update} || 0;
   $self->{timeout} = $args{timeout} || 3;
+  $self->{metas}   = Utils::get_default_meta($self->{default});
 
   return undef unless defined $self->{servers}->[0];
   return bless $self, $class;
@@ -964,6 +967,11 @@ sub safe_write {
   my $dest  = $self->{bakdir} . "/" . "$file";
   my $is_cp = 0;
 
+  unless ($self->{update} == 1) {
+    Utils::time_print("ignore safe write as not in update mode!");
+    return 1;
+  }
+
   # backup before generate new conf
   if (-e $source) {
     if (Utils::file_crc32($source) eq Utils::string_crc32($content)) {
@@ -993,6 +1001,29 @@ sub safe_write {
   }
 
   return 1;
+}
+
+sub safe_delete {
+  my $self = shift;
+  my $conf = shift;
+
+  unless ($self->{update} == 1) {
+    Utils::time_print("ignore safe delete as not in update mode!");
+    return 1;
+  }
+
+  return 1 unless -e $conf;
+
+  my $file = basename($conf);
+  my $dest = $self->{bakdir} . "/" . "$file";
+
+  my $del_status = 0;
+  if (copy($conf, $dest)) {
+    Utils::time_print("copy delete file $conf to $dest");
+    $del_status = unlink $conf;
+  }
+
+  return $del_status; 
 }
 
 sub get_telegraf_content {
@@ -1049,7 +1080,7 @@ sub send_custom_to_graphite {
   my $value  = shift;
   my $servers = _get_alive_server($self->get_graphite_server());
 
-  my $metas = Utils::get_default_meta($self->{default});
+  my $metas = $self->{metas};
   my $line  = _make_line($metas, $metric, $value);
   return 0 unless defined $line;
   
@@ -1126,7 +1157,7 @@ sub get_consul_key {
   my $tag = $meta->{tag};
   my $is_input = $meta->{is_input} || 0;
 
-  my $metas = Utils::get_default_meta($self->{default});
+  my $metas = $self->{metas};
   my $team  = $metas->{team} || 'NULL';
   my $mark  = $metas->{mark} || 'NULL';
   my $ip    = $metas->{ip} || 'NULL';
@@ -1245,6 +1276,40 @@ sub get_input_list_from_consul {
   my @list   = split(/,\s*/, $value);
 }
 
+sub _ip_ignore_handle {
+  my $ignore = shift;
+  my %ignore_hash;
+
+  $ignore =~ s/\x{22}|\x{27}//g;
+  foreach my $k (split(/,\s*/, $ignore)) {
+    my ($ip, $is_del) = split(/\s*->\s*/, $k);
+    $ignore_hash{$ip}{ip} = $ip;
+    $ignore_hash{$ip}{is_del} = $is_del || 0;
+  }
+
+  return \%ignore_hash;
+}
+
+sub meta_ip_ignores {
+  my $self  = shift;
+  my $tag   = shift;
+
+  my $metas = $self->{metas};
+  my $team  = $metas->{team} || 'NULL';
+  my $mark  = $metas->{mark} || 'NULL';
+  my $ip    = $metas->{ip} || 'NULL';
+
+  my $ignore_key = "telegraf/$team/$mark/inputs/$tag/ip_ignores";
+  my $ignore_ref;
+  foreach my $s (shuffle(@{$self->{servers}})) {
+    $ignore_ref = $self->make_consul_request($s, $ignore_key);
+    last if defined $ignore_ref->{value};
+  }
+
+  my $handle_hash = _ip_ignore_handle($ignore_ref->{value});
+  return $handle_hash->{$ip};
+}
+
 sub gen_new_inputs_conf {
   my $self = shift;
   my @inputs = $self->get_input_list_from_consul();
@@ -1255,8 +1320,20 @@ sub gen_new_inputs_conf {
     my $value = $self->get_key_from_consul({ tag => $k, is_input => 1}, 2);
     next unless defined $value;
 
-    Utils::time_print("generate input conf: $conf");
-    $counter++ if $self->safe_write($conf, $value);
+    my $ignore_meta = $self->meta_ip_ignores($k);
+    if (defined $ignore_meta->{ip}) {
+      if ($ignore_meta->{is_del} == 1) {
+        Utils::time_print("will delete $conf as ip_ignores");
+        $counter++ if $self->safe_delete($conf);
+      }
+      else {
+        next;
+      }
+    }
+    else {
+      Utils::time_print("generate input conf: $conf");
+      $counter++ if $self->safe_write($conf, $value);
+    }
   }
 
   return $counter;
