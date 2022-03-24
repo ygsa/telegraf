@@ -29,6 +29,16 @@ die() {
   exit 2
 }
 
+_which() {
+  if [ -x /usr/bin/which ]; then
+    /usr/bin/which "$1" 2>/dev/null | awk '{print $1}'
+  elif which which 1>/dev/null 2>&1; then
+    which "$1" 2>/dev/null | awk '{print $1}'
+  else
+    echo "$1"
+  fi
+}
+
 # Run the program
 main() {
   for o; do
@@ -39,6 +49,7 @@ main() {
       -n)       shift; OPT_NET="$1";     shift;  ;;
       -1)       shift; OPT_SERVER1="$1"; shift;  ;;
       -2)       shift; OPT_SERVER2="$1"; shift;  ;;
+      -k)       shift; OPT_TOKEN="$1";   shift;  ;;
       -v)       grep -A2 '^=head1 VERSION' "$0" | tail -n1; exit 0 ;;
       -h)       perl -00 -ne 'm/^\s+Usage:/ && print' "$0"; exit 0 ;;
       -*)       echo "Unknown option ${o}. Try -h."; exit 1; ;;
@@ -49,6 +60,7 @@ main() {
   OPT_MARK="${OPT_MARK:-"NULL"}"
   OPT_TEAM="${OPT_TEAM:-"NULL"}"
   OPT_NET="${OPT_NET:-"NULL"}"
+  OPT_TOKEN="${OPT_TOKEN:-"NULL"}"
   OPT_SERVER1="${OPT_SERVER1:-"NULL"}"
   OPT_SERVER2="${OPT_SERVER2:-"NULL"}"
 
@@ -66,22 +78,9 @@ main() {
 
   IP=$(get_one_ip $OPT_NET)
   IP="${IP:-"NULL"}"
-  # overwrite or touch /etc/default/telegraf
-  cat <<EOF > /etc/default/telegraf
-DC="$OPT_DC"
-MARK="$OPT_MARK"
-TEAM="$OPT_TEAM"
-IP="$IP"
-EOF
-
-  if [[ "$?" -eq 0 ]]; then
-    log "change global tags ok"
-  else
-    error "change global tags error"
-  fi
 
   if grep '{{graphites}}' /etc/telegraf/telegraf.conf >/dev/null 2>&1; then
-    SERVERS=$(verify_servers $OPT_SERVER1 $OPT_SERVER2)
+    SERVERS=$(get_graphite_servers $OPT_TEAM $OPT_TOKEN $OPT_SERVER1 $OPT_SERVER2)
     if [ "$SERVERS" ]; then
       sed -i "s/{{graphites}}/$SERVERS/" /etc/telegraf/telegraf.conf
       [[ "$?" -eq 0 ]] && {
@@ -90,37 +89,84 @@ EOF
         error "change servers to $SERVERS error"
       }
     else
-      error "no server alive!"
+      error "no consul server alive!"
     fi
   fi
+
+  # at least one server ok, then change the telegraf default
+  cat <<EOF > /etc/default/telegraf
+DC="$OPT_DC"
+MARK="$OPT_MARK"
+TEAM="$OPT_TEAM"
+IP="$IP"
+TOKEN="$OPT_TOKEN"
+SERVER="$OPT_SERVER1, $OPT_SERVER2"
+EOF
+
+  if [[ "$?" -eq 0 ]]; then
+    log "change global tags ok"
+  else
+    error "change global tags error"
+  fi
+
+}
+
+
+
+get_graphite_servers() {
+  local team="$1"
+  local token="$2"
+  local server1="$3"
+  local server2="$4"
+  local key="telegraf/${team}/graphite_server"
+
+  local value=""
+  for server in $server1 $server2; do
+    value=$(consul-kv -server $server -token $token -key $key)
+
+    if [ "$?" -ne 0 ]; then
+      value=""
+    else
+      break
+    fi
+  done
+
+  verify_servers "$value"
 }
 
 verify_servers() {
-  local server1="$1"
-  local server2="$2"
-  echo -e "$server1\n$server2" | \
+  local servers="$1"
+  echo -e "$servers" | \
     perl -ne '
       BEGIN {
+        use strict;
+        use warnings;
         use IO::Socket::INET;
 	my @servers;
       };
       
       chomp;
-      my $fail = 0;
-      my ($host, $port) = split(/(?::|\s+)/, $_);
-      $port ||= 2003;
-      my $socket = IO::Socket::INET->new(
-        PeerAddr => $host,
-        PeerPort => $port,
-        Proto    => tcp,
-        Timeout  => 3,
-      ) || $fail++;
-      
-      if ($fail > 0) {
-        next;
-      }
-      unless (grep(/$host:$port/, @servers)) {
-        push @servers, "\"$host:$port\"";
+
+      my @lists = split(/,\s*/, $_);
+      foreach my $s (@lists) {
+        $s =~ s/\x{22}|\x{27}//g;
+        my ($host, $port) = split(/(?::|\s+)/, $s);
+        $port ||= 2003;
+
+        my $fail = 0;
+        my $socket = IO::Socket::INET->new(
+          PeerAddr => $host,
+          PeerPort => $port,
+          Proto    => "tcp",
+          Timeout  => 3,
+        ) || $fail++;
+        
+        if ($fail > 0) {
+          next;
+        }
+        unless (grep(/$host:$port/, @servers)) {
+          push @servers, "\"$host:$port\"";
+        }
       }
     
       END {
@@ -228,8 +274,9 @@ telegraf-prepare - set the global tags and graphite servers for the telegraf set
     -m set the MARK tag, default is NULL.
     -t set the TEAM tag, default is NULL.
     -n filter net address if host have multiple ip address.
-    -l graphite server 1, must set avalid ip address.
-    -2 graphite server 2, must set avalid ip address.
+    -l consul server 1, must set avalid ip address.
+    -2 consul server 2, must set avalid ip address.
+    -k consul access token.
     -v print version message.
     -h print help message.
   eg:
