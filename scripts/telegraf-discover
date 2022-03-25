@@ -1145,7 +1145,7 @@ sub make_consul_request {
 
   my %result;
   $result{create_time} = $hash->[0]->{Flags} || 0;
-  $result{value}       = decode_base64($hash->[0]->{Value});
+  $result{value}       = defined $hash->[0]->{Value} ? decode_base64($hash->[0]->{Value}) : undef;
 
   return \%result;
 }
@@ -1278,9 +1278,11 @@ sub get_input_list_from_consul {
 
 sub _ip_ignore_handle {
   my $ignore = shift;
-  my %ignore_hash;
+  return undef unless defined $ignore;
 
   $ignore =~ s/\x{22}|\x{27}//g;
+
+  my %ignore_hash;
   foreach my $k (split(/,\s*/, $ignore)) {
     my ($ip, $is_del) = split(/\s*->\s*/, $k);
     $ignore_hash{$ip}{ip} = $ip;
