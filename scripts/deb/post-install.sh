@@ -285,6 +285,10 @@ Defaults!IPTABLESSUM !logfile, !syslog
 Cmnd_Alias PROCGATHER = /usr/bin/procgather *
 telegraf	ALL=(root)	NOPASSWD: PROCGATHER
 Defaults!PROCGATHER !logfile, !syslog, !pam_session
+
+Cmnd_Alias IPMITOOL = /usr/bin/ipmitool *
+telegraf	ALL=(root)	 NOPASSWD: IPMITOOL
+Defaults!IPMITOOL !logfile, !syslog, !pam_session
 EOF
 fi
 
