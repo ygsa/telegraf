@@ -80,7 +80,7 @@ main() {
   IP="${IP:-"NULL"}"
 
   if grep '{{graphites}}' /etc/telegraf/telegraf.conf >/dev/null 2>&1; then
-    SERVERS=$(get_graphite_servers $OPT_TEAM $OPT_TOKEN $OPT_SERVER1 $OPT_SERVER2)
+    SERVERS=$(get_graphite_servers $OPT_TEAM $OPT_MARK $OPT_TOKEN $OPT_SERVER1 $OPT_SERVER2)
     if [ "$SERVERS" ]; then
       sed -i "s/{{graphites}}/$SERVERS/" /etc/telegraf/telegraf.conf
       [[ "$?" -eq 0 ]] && {
@@ -115,10 +115,11 @@ EOF
 
 get_graphite_servers() {
   local team="$1"
-  local token="$2"
-  local server1="$3"
-  local server2="$4"
-  local key="telegraf/${team}/graphite_server"
+  local mark="$2"
+  local token="$3"
+  local server1="$4"
+  local server2="$5"
+  local key="telegraf/${team}/${mark}/graphite_server"
 
   local value=""
   for server in $server1 $server2; do
