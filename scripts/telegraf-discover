@@ -136,7 +136,12 @@ if (defined $consul) {
   # check consul server is ok
   croak "no alive consul server, will exit..." unless defined $consul->{servers};
 
-  $discover = $consul->get_key_from_consul({ tag => 'discover' }, 0);
+  my $result = $consul->get_key_from_consul({ tag => 'discover' }, 0);
+
+  # prepare consul key value
+  $discover = $result->{value} || '';
+  $consul->send_custom_to_graphite('telegraf_consul.status', $result->{status});
+
   Utils::create_dir_if("$confd") 
       or croak "create $confd error and $confd is not exist";
 }
@@ -229,13 +234,16 @@ if ($is_trigger > 0) {
 
     if ($high != 0 || $low != 0) {
       Utils::time_print("error - $cmd execute error! high: $high, low: $low");
+      $consul->send_custom_to_graphite('telegraf_restart.status', 0) if defined $consul;
     }
     else {
       if ($disconf->is_telegraf_alive()) {
         Utils::time_print("ok - $cmd execute ok, and process is running!");
+        $consul->send_custom_to_graphite('telegraf_restart.status', 1) if defined $consul;
       }
       else {
         Utils::time_print("error - $cmd execute ok, but process is not running!");
+        $consul->send_custom_to_graphite('telegraf_restart.status', 0) if defined $consul;
       }
     }
   }
@@ -1116,37 +1124,19 @@ sub make_consul_request {
                    },
                  );
 
-  my $status = $response->{status} || -99;
-  if ($status == -99) {
-    Utils::time_print("unknown error for http response");
-    $self->send_custom_to_graphite("telegraf_consul.status", -99);
-    return undef;
+  my %result = (create_time => 0, value => undef);
+  $result{status} = $response->{status} || -99;
+
+  unless (grep(/^$result{status}$/, qw(200 403 404))) {
+    Utils::time_print("consul request is not ok, unkown error, status code: $result{status}");
   }
 
-  $self->send_custom_to_graphite("telegraf_consul.status", $status);
+  if ($result{status} == 200) {
+    my $hash        = JSONTiny::decode_json($response->{content});
 
-  if ($status == 404) {
-    # skip to print not found message
-    # Utils::time_print("not found the consul key: $key");
-    return undef;
+    $result{create_time} = $hash->[0]->{Flags} || 0;
+    $result{value}       = defined $hash->[0]->{Value} ? decode_base64($hash->[0]->{Value}) : undef;
   }
-
-  if ($status == 403) {
-    Utils::time_print("permission deny for consul token($token).");
-    return undef;
-  }
-
-  if ($status != 200) {
-    Utils::time_print("consul request is not ok, unkown error, status code: $status");
-    return undef;
-  }
-
-  my $hash        = JSONTiny::decode_json($response->{content});
-
-  my %result;
-  $result{create_time} = $hash->[0]->{Flags} || 0;
-  $result{value}       = defined $hash->[0]->{Value} ? decode_base64($hash->[0]->{Value}) : undef;
-
   return \%result;
 }
 
@@ -1206,18 +1196,14 @@ sub get_key_from_consul {
     }
   }
 
-  $result->{create_time} ||= 0;
   if ($result->{create_time} > 0) {
       # return undef if current greater than expire minutes
       if ( time() > (($minute*60) + $result->{create_time}) ) {
-        return undef;
-      }
-      else {
-        return $result->{value};
+        $result->{value} = undef;
       }
   }
 
-  return $result->{value};
+  return $result;
 }
 
 sub write_interval_conf {
@@ -1250,7 +1236,8 @@ sub gen_new_interval_conf {
   my $self = shift;
 
   my $interval_default = $self->get_telegraf_list_interval();
-  my $interval_consul  = Utils::parsecfg($self->get_key_from_consul({ tag => 'interval' }, 2));
+  my $interval_result  = $self->get_key_from_consul({ tag => 'interval' }, 2);
+  my $interval_consul  = Utils::parsecfg($interval_result->{value});
 
   my $counter = 0;
   foreach my $k (keys %{$interval_consul}) {
@@ -1269,11 +1256,13 @@ sub gen_new_interval_conf {
 sub get_input_list_from_consul {
   my $self   = shift;
 
-  my $value  = $self->get_key_from_consul({ tag => 'inputs' }, 0);
+  my $result  = $self->get_key_from_consul({ tag => 'inputs' }, 0);
+  my $value   = $result->{value};
   return undef unless defined $value;
 
   $value =~ s/'|"//g;
   my @list   = split(/,\s*/, $value);
+  return @list;
 }
 
 sub _ip_ignore_handle {
@@ -1318,8 +1307,9 @@ sub gen_new_inputs_conf {
 
   my $counter = 0;
   foreach my $k (@inputs) {
-    my $conf  = $self->{confd} . "/" . "$k" . "-auto.conf";
-    my $value = $self->get_key_from_consul({ tag => $k, is_input => 1}, 2);
+    my $conf   = $self->{confd} . "/" . "$k" . "-auto.conf";
+    my $result = $self->get_key_from_consul({ tag => $k, is_input => 1}, 2);
+    my $value  = $result->{value};
     next unless defined $value;
 
     my $ignore_meta = $self->meta_ip_ignores($k);
