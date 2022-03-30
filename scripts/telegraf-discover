@@ -1165,6 +1165,11 @@ sub get_consul_key {
     push @keys, "telegraf/$team/$mark/interval/default";
   }
 
+  if ($tag eq 'timechange') {
+    push @keys, "telegraf/$team/$mark/timechange/$ip";
+    push @keys, "telegraf/$team/$mark/timechange/default";
+  }
+
   if ($tag eq 'inputs') {
     push @keys, "telegraf/$team/$mark/inputs/_lists_";
   }
@@ -1260,8 +1265,20 @@ sub get_input_list_from_consul {
   my $value   = $result->{value};
   return undef unless defined $value;
 
-  $value =~ s/'|"//g;
-  my @list   = split(/,\s*/, $value);
+  my @ignore_lists = qw(cpu disk diskio kernel mem processes swap
+                        system conntrack internal interrupts
+                        kernel_vmstat linux_sysctl_fs net netstat);
+
+  $value =~ s/\x{22}|\x{27}//g;
+  my @list;
+  foreach my $k (split(/,\s*/, $value)) {
+    if (grep(/^$k$/, @ignore_lists)) {
+      Utils::time_print("ignore input $k which in telegraf.conf");
+      next;
+    }
+    push @list, $k;
+  }
+
   return @list;
 }
 
@@ -1270,7 +1287,6 @@ sub _ip_ignore_handle {
   return undef unless defined $ignore;
 
   $ignore =~ s/\x{22}|\x{27}//g;
-
   my %ignore_hash;
   foreach my $k (split(/,\s*/, $ignore)) {
     my ($ip, $is_del) = split(/\s*->\s*/, $k);
@@ -1331,6 +1347,97 @@ sub gen_new_inputs_conf {
   return $counter;
 }
 
+sub _replace_agent {
+  my $content = shift;
+  my $diff    = shift;
+
+  my $time_change = $diff->{time_change};
+  my $time_server = $diff->{time_server};
+
+  my $result = '';
+  my @lines = split(/(?:\015{1,2}\012|\015|\012)/, $content);
+  foreach my $k (@lines) {
+    chomp($k);
+    next if $k =~ m/(?:time_change|time_server)/i;
+    $result .= "$k\n";
+  }
+  $result .= "  time_change = $time_change\n";
+  if ($time_change eq 'true') {
+    $result .= "  time_server = \"$time_server\"\n";
+  }
+
+  return $result;
+}
+
+sub _is_timechange {
+  my $conf  = shift;
+  my $diff  = shift;
+
+  my $agent_cnf = Utils::parsecfg_file($conf);
+  my $time_change = $agent_cnf->{agent}->{time_change} || 'false';
+  my $time_server = $agent_cnf->{agent}->{time_server} || '';
+
+  if ($time_change eq $diff->{time_change}
+      && $time_server eq $diff->{time_server}) {
+    return 0;
+  }
+
+  return 1;
+}
+
+sub write_timechange_conf {
+  my $self  = shift;
+  my $diff  = shift;
+
+  return 0 unless _is_timechange($self->{conf}, $diff);
+
+  my %seen;
+  my $agent_content = Utils::splitcfg_file($self->{conf});
+
+  my $content = "# generate by telegraf-discover\n";
+  foreach my $k (@{$agent_content->{fields}}) {
+    $seen{$k}++;
+    next if $seen{$k} > 1;
+
+    foreach my $c (@{$agent_content->{sections}{$k}{content}}) {
+      $content .= "[$k]" . "\n";
+      
+      if ($k eq 'agent') {
+        $content .= _replace_agent($c, $diff) . "\n";
+      }
+      else {
+        $content .= "$c\n";
+      }
+    }
+  }
+
+  return $self->safe_write($self->{conf}, $content);
+}
+
+sub _parse_timechange {
+  my $info = shift;
+
+  my %lists;
+  my $agent_time = Utils::parsecfg($info);
+
+  $lists{time_change} = $agent_time->{agent}->{time_change} || 'false';
+  $lists{time_server} = $agent_time->{agent}->{time_server} || '';
+  $lists{time_change} =~ s/\x{22}|\x{27}//g;
+  $lists{time_server} =~ s/\x{22}|\x{27}//g;
+
+  return \%lists;
+}
+
+sub gen_new_timechange_conf {
+  my $self = shift;
+
+  my $timeinfo = _parse_timechange($self->get_key_from_consul({tag => 'timechange'}, 2)->{value});
+  my $counter = 0;
+
+  $counter++ if $self->write_timechange_conf($timeinfo);
+
+  return $counter;
+}
 
 sub make_consul_discover {
   my $self = shift;
@@ -1342,6 +1449,9 @@ sub make_consul_discover {
 
   Utils::time_print("discover consul for inputs.");
   $counter += $self->gen_new_inputs_conf();
+
+  Utils::time_print("discover consul for timechange.");
+  $counter += $self->gen_new_timechange_conf();
 
   return $counter;
 }
