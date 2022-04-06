@@ -2171,6 +2171,8 @@ sub _replace_postgresql {
              ? 'localhost'
              : '$IP';
 
+    next unless defined $user;
+
     my $dsn;
     if (defined $pass) {
       $dsn = '"'
