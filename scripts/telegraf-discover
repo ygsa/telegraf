@@ -1272,6 +1272,7 @@ sub get_input_list_from_consul {
   $value =~ s/\x{22}|\x{27}//g;
   my @list;
   foreach my $k (split(/,\s*/, $value)) {
+    next unless defined $k;
     if (grep(/^$k$/, @ignore_lists)) {
       Utils::time_print("ignore input $k which in telegraf.conf");
       next;
@@ -1323,6 +1324,7 @@ sub gen_new_inputs_conf {
 
   my $counter = 0;
   foreach my $k (@inputs) {
+    next unless defined $k;
     my $conf   = $self->{confd} . "/" . "$k" . "-auto.conf";
     my $result = $self->get_key_from_consul({ tag => $k, is_input => 1}, 2);
     my $value  = $result->{value};
@@ -1739,12 +1741,12 @@ sub _replace_dns_query {
   return undef unless Utils::is_tcp_port_open("wwww.baidu.com", 443);
 
   my $out = join(", ", @$servers);
-  $temp =~ s/{{instances}}/$out/g;
+  $temp =~ s/'''instances'''/$out/g;
 
   $secs->{domains} ||= 'www.baidu.com';
   my @domains = split(/,\s*/, $secs->{domains});
   my $ins_domains = join(", ", map { chomp; '"' . Utils::remove_psquote($_) . '"' } @domains);
-  $temp =~ s/{{domains}}/$ins_domains/g;
+  $temp =~ s/'''domains'''/$ins_domains/g;
 
   return $temp;
 }
@@ -1757,13 +1759,13 @@ sub disc_dns_query {
 # Query given DNS server and gives statistics
 [[inputs.dns_query]]
   ## servers to query
-  servers = [{{instances}}]
+  servers = ['''instances''']
 
   ## Network is the network protocol name.
   network = "udp"
 
   ## Domains or subdomains to query.
-  domains = [{{domains}}]
+  domains = ['''domains''']
 
   ## Query record type.
   ## Possible values: A, AAAA, CNAME, MX, NS, PTR, TXT, SOA, SPF, SRV.
@@ -1792,7 +1794,7 @@ sub _replace_memcached {
   return undef if @servers == 0;
 
   my $out = join(", ", @servers);
-  $temp =~ s/{{instances}}/$out/g;
+  $temp =~ s/'''instances'''/$out/g;
 
   return $temp;
 }
@@ -1806,7 +1808,7 @@ sub disc_memcached {
 [[inputs.memcached]]
   ## An array of address to gather stats about. Specify an ip on hostname
   ## with optional port. ie localhost, 10.0.0.1:11211, etc.
-  servers = [{{instances}}]
+  servers = ['''instances''']
   # unix_sockets = ["/var/run/memcached.sock"]
 TEMP_END
 
@@ -1837,7 +1839,7 @@ sub _replace_mysql {
   return undef if @servers == 0;
 
   my $out = join(", ", @servers);
-  $temp =~ s/{{instances}}/$out/g;
+  $temp =~ s/'''instances'''/$out/g;
 
   return $temp;
 }
@@ -1857,7 +1859,7 @@ sub disc_mysql {
   ##    servers = ["user@tcp(127.0.0.1:3306)/?tls=false"]
   #
   ## If no servers are specified, then localhost is used as the host.
-  servers = [{{instances}}]
+  servers = ['''instances''']
 
   ## Selects the metric output format.
   ##
@@ -1969,7 +1971,7 @@ sub _replace_mongodb {
   return undef if @servers == 0;
 
   my $out = join(", ", @servers);
-  $temp =~ s/{{instances}}/$out/g;
+  $temp =~ s/'''instances'''/$out/g;
 
   return $temp;
 }
@@ -1986,7 +1988,7 @@ sub disc_mongodb {
   ## For example:
   ##   mongodb://user:auth_key@10.10.3.30:27017,
   ##   mongodb://10.10.3.33:18832,
-  servers = [{{instances}}]
+  servers = ['''instances''']
 
   ## When true, collect cluster status
   ## Note that the query that counts jumbo chunks triggers a COLLSCAN, which
@@ -2044,7 +2046,7 @@ sub _replace_redis {
   return undef if @servers == 0;
 
   my $out = join(", ", @servers);
-  $temp =~ s/{{instances}}/$out/g;
+  $temp =~ s/'''instances'''/$out/g;
 
   return $temp;
 }
@@ -2065,7 +2067,7 @@ sub disc_redis {
   ##
   ## If no servers are specified, then localhost is used as the host.
   ## If no port is specified, 6379 is used
-  servers = [{{instances}}]
+  servers = ['''instances''']
 
   ## Optional. Specify redis commands to retrieve values
   # [[inputs.redis.commands]]
@@ -2117,7 +2119,7 @@ sub _replace_pika {
   return undef if @servers == 0;
 
   my $out = join(", ", @servers);
-  $temp =~ s/{{instances}}/$out/g;
+  $temp =~ s/'''instances'''/$out/g;
 
   return $temp;
 }
@@ -2137,7 +2139,7 @@ sub disc_pika {
   ##
   ## If no servers are specified, then localhost is used as the host.
   ## If no port is specified, 9221 is used
-  servers = [{{instances}}]
+  servers = ['''instances''']
   ## Optional. Specify redis commands to retrieve values
   # [[inputs.pika.commands]]
   # command = ["get", "sample-key"]
@@ -2196,13 +2198,13 @@ sub _replace_postgresql {
   return undef if @servers == 0;
 
   my $out = join(", ", @servers);
-  $temp =~ s/{{instances}}/$out/g;
+  $temp =~ s/'''instances'''/$out/g;
 
   if ($items->[0]->{is_local} > 0) {
-    $temp =~ s/{{is_local}}//g;
+    $temp =~ s/'''is_local'''//g;
   }
   else {
-    $temp =~ s/{{is_local}}/# /g;
+    $temp =~ s/'''is_local'''/# /g;
   }
 
   return $temp;
@@ -2223,12 +2225,12 @@ sub disc_postgresql {
   ##
   ## All connection parameters are optional.
   ##
-  servers = [{{instances}}]
+  servers = ['''instances''']
 
   ## A custom name for the database that will be used as the "server" tag in the
   ## measurement output, and we'll add port to the outputaddress by default.
   ## If not specified, the connection host and port are used.
-  {{is_local}}outputaddress = '$IP'
+  '''is_local'''outputaddress = '$IP'
 
   ## connection configuration.
   ## maxlifetime - specify the maximum lifetime of a connection.
