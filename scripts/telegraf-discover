@@ -84,6 +84,7 @@ my $default = "/etc/default/telegraf";
 my $disf  = "/etc/telegraf/discover.conf";
 my $token = "";
 my $server;
+my $scheme;
 my $jitter= 5; # sleep random seconds
 
 GetOptions(
@@ -93,6 +94,7 @@ GetOptions(
   "update!"   => \$update,
   "token=s"   => \$token,
   "server=s@" => \$server,
+  "scheme=s"  => \$scheme,
   "jitter=i"  => \$jitter,
   "verbose!"  => \$verbose,
   "help|h"    => \$help,
@@ -117,6 +119,7 @@ if (defined $jitter && $jitter > 0) {
 my $default_meta = Utils::get_default_meta($default);
 $token  ||= $default_meta->{token};
 $server ||= $default_meta->{server} || ["localhost:8500"];
+$scheme ||= $default_meta->{scheme} || 'http';
 
 my $consul = Consul->new(
     conf    => $conf,
@@ -124,6 +127,7 @@ my $consul = Consul->new(
     default => $default,
     servers => $server,
     token   => $token,
+    scheme  => $scheme,
     update  => $update,
     timeout => 3,
   );
@@ -804,6 +808,7 @@ sub new {
   $self->{default} = $args{default} || '/etc/default/telegraf';
   $self->{servers} = _get_alive_server($args{servers}) || undef;
   $self->{token}   = $args{token} || '';
+  $self->{scheme}  = $args{scheme} || 'http';
   $self->{update}  = $args{update} || 0;
   $self->{timeout} = $args{timeout} || 3;
   $self->{metas}   = Utils::get_default_meta($self->{default});
@@ -1108,15 +1113,16 @@ sub make_consul_request {
   my $key    = shift;
 
   $key =~ s/^\/// if $key =~ /^\//;
-  my $http = HTTPTiny->new(timeout => $self->{timeout});
+  my $http = HTTPTiny->new(timeout => $self->{timeout}, verify_SSL => 0);
   unless (defined $http) { 
       Utils::time_print("HTTPTiny new error");
       return undef;
     }
 
+  my $scheme   = lc($self->{scheme});
   my $response = $http->request(
                    "GET",
-                   "http://$server/v1/kv/$key",
+                   "$scheme://$server/v1/kv/$key",
                    {
                      headers => {
                        "X-Consul-Token" => "$self->{token}",
