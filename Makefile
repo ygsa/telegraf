@@ -15,7 +15,7 @@ else ifeq ($(tag),)
 	version := $(next_version)
 	rpm_version := $(version)~$(commit)-0
 	rpm_iteration := 0
-	deb_version := $(version)~$(commit)-0
+	deb_version := $(version)~$(commit)_0
 	deb_iteration := 0
 	tar_version := $(version)~$(commit)
 else ifneq ($(findstring -rc,$(tag)),)
@@ -25,7 +25,7 @@ else ifneq ($(findstring -rc,$(tag)),)
 	rpm_version := $(version)-0.$(rc)
 	rpm_iteration := 0.$(subst rc,,$(rc))
 	deb_version := $(version)~$(rc)-1
-	deb_iteration := 0
+	deb_iteration := 1
 	tar_version := $(version)~$(rc)
 else
 	version := $(tag:v%=%)
@@ -216,8 +216,10 @@ install: $(buildbin)
 	@cp -fv $(procgatherbin) $(DESTDIR)$(bindir)
 	@cp -fv $(consul-kvbin) $(DESTDIR)$(bindir)
 	@if [ $(GOOS) != "windows" ]; then cp -fv etc/telegraf.conf $(DESTDIR)$(sysconfdir)/telegraf/telegraf.conf$(conf_suffix); fi
+	@if [ $(GOOS) != "windows" ]; then cp -fva etc/tls $(DESTDIR)$(sysconfdir)/telegraf/tls; fi
 	@if [ $(GOOS) != "windows" ]; then cp -fv etc/logrotate.d/telegraf $(DESTDIR)$(sysconfdir)/logrotate.d; fi
 	@if [ $(GOOS) = "windows" ]; then cp -fv etc/telegraf_windows.conf $(DESTDIR)/telegraf.conf; fi
+	@if [ $(GOOS) = "windows" ]; then cp -fva etc/tls $(DESTDIR)/tls; fi
 	@if [ $(GOOS) = "linux" ]; then scripts/check-dynamic-glibc-versions.sh $(buildbin) $(glibc_version); fi
 	@if [ $(GOOS) = "linux" ]; then mkdir -pv $(DESTDIR)$(prefix)/lib/telegraf/scripts; fi
 	@if [ $(GOOS) = "linux" ]; then cp -fv scripts/telegraf.service $(DESTDIR)$(prefix)/lib/telegraf/scripts; fi

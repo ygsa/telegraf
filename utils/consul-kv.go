@@ -20,12 +20,15 @@ func main() {
 	// options
 	var dc, server, token, key string
 	var timeout time.Duration
+	var tls bool
+	var scheme string = "http"
 
 	flag.StringVar(&dc, "dc", "", "the consul datacenter")
 	flag.StringVar(&server, "server", "localhost:8500", "consul server address")
 	flag.StringVar(&token, "token", "", "the token to access address, like env variable HTTP_CONSUL_TOKEN")
 	flag.StringVar(&key, "key", "", "the key of the consul that you want get")
 	flag.DurationVar(&timeout, "timeout", 3 * time.Second, "request timeout(seconds) before give up")
+	flag.BoolVar(&tls, "tls", false, "whether use tls or not")
 
 	flag.Parse()
 
@@ -34,11 +37,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	tlsConfig := &api.TLSConfig{}
+	if tls {
+		scheme = "https"
+
+		tlsConfig = &api.TLSConfig{
+			CertFile: "/etc/telegraf/tls/client-cert.pem",
+			KeyFile:  "/etc/telegraf/tls/client-key.pem",
+			CAFile:   "/etc/telegraf/tls/ca.pem",
+			InsecureSkipVerify: true,
+		}
+	}
+
 	consulConfig := &api.Config{
 		Datacenter:	dc,
 		Address:	server,
 		Token:		token,
 		WaitTime:	timeout,
+		Scheme:         scheme,
+		TLSConfig:      *tlsConfig,
 	}
 
 	client, err := api.NewClient(consulConfig)
