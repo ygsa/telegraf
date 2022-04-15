@@ -81,6 +81,7 @@ my $conf    = "/etc/telegraf/telegraf.conf";
 my $confd   = "/etc/telegraf/telegraf.d";
 my $default = "/etc/default/telegraf";
 my $disf  = "/etc/telegraf/discover.conf";
+my $sock  = "/var/run/telegraf/telegraf.sock";
 my $token = "";
 my $server;
 my $scheme;
@@ -125,6 +126,7 @@ my $consul = Consul->new(
     confd   => $confd,
     default => $default,
     servers => $server,
+    sockfile=> $sock,
     token   => $token,
     scheme  => $scheme,
     update  => $update,
@@ -231,6 +233,11 @@ if (defined $consul) {
 if ($is_trigger > 0) {
   Utils::time_print("need restart telegraf") if $verbose;
   if ($update) {
+    unless (is_telegraf_conf_ok()) {
+      Utils::time_print("error - telegraf --test error, check the config syntax");
+      $consul->send_custom_to_graphite('telegraf_restart.status', 2) if defined $consul;
+      exit 1;
+    }  
     my $cmd = "service telegraf restart";
     my($high, $low) = Utils::exec_system("$cmd");
     sleep 1; # wait a moment
@@ -250,6 +257,16 @@ if ($is_trigger > 0) {
       }
     }
   }
+}
+
+sub is_telegraf_conf_ok {
+  my $cmd = "telegraf --test  --config /etc/telegraf/telegraf.conf >/dev/null 2>&1";
+  my($high, $low) = Utils::exec_system("$cmd");
+  if ($high != 0 || $low != 0) {
+    return 0;
+  }
+
+  return 1;
 }
 
 =head1 AUTHOR
@@ -793,7 +810,7 @@ use File::Basename;
 use Utils;
 use MIME::Base64;
 use JSONTiny;
-use IO::Socket::INET;
+use IO::Socket::UNIX;
 
 sub new {
   my ($class, %args) = @_;
@@ -809,24 +826,26 @@ sub new {
   $self->{update}  = $args{update} || 0;
   $self->{timeout} = $args{timeout} || 3;
   $self->{metas}   = Utils::get_default_meta($self->{default});
+  $self->{sockfile}= $args{sockfile} || '/var/run/telegraf/telegraf.sock';
 
   return undef unless defined $self->{servers}->[0];
   return bless $self, $class;
 }
 
-sub _get_socket {
-  # host:port
-  my $server = shift;
+sub get_socket {
+  my $self = shift;
+  my $sockfile = $self->{sockfile};
   my $fail = 0;
 
-  my $socket = IO::Socket::INET->new(
-    PeerAddr => "$server",
-    Proto    => "TCP",
+  return undef unless -e $sockfile;
+  my $socket = IO::Socket::UNIX->new(
+    Peer  => "$sockfile",
+    Type  => SOCK_STREAM,
     Timeout  => 3,
   ) || $fail++;
 
   if ($fail > 0) {
-    Utils::time_print("get socket error for: $server");
+    Utils::time_print("get socket error for: $sockfile");
   }
   return $socket;
 }
@@ -1088,19 +1107,16 @@ sub send_custom_to_graphite {
   my $self   = shift;
   my $metric = shift;
   my $value  = shift;
-  my $servers = _get_alive_server($self->get_graphite_server());
 
   my $metas = $self->{metas};
   my $line  = _make_line($metas, $metric, $value);
   return 0 unless defined $line;
   
-  foreach my $s (@$servers) {
-    my $socket = _get_socket($s);
-    if (defined $socket) {
-      print $socket "$line";
-      last;
-    }
+  my $socket = $self->get_socket();
+  if (defined $socket) {
+    print $socket "$line";
   }
+
   return 1;
 }
 
