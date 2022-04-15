@@ -294,6 +294,7 @@ telegraf-prepare - set the global tags and graphite servers for the telegraf set
     -l consul server 1, must set avalid ip address.
     -2 consul server 2, must set avalid ip address.
     -k consul access token.
+    -s http scheme(http or https), default is http.
     -v print version message.
     -h print help message.
   eg:

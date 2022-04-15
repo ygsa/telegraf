@@ -2,6 +2,7 @@
 
 BIN_DIR=/usr/bin
 LOG_DIR=/var/log/telegraf
+RUN_DIR=/var/run/telegraf
 SCRIPT_DIR=/usr/lib/telegraf/scripts
 LOGROTATE_DIR=/etc/logrotate.d
 
@@ -239,11 +240,25 @@ EOF
 #  response_status_code = 200
 EOF
   fi
+
+  if [[ ! -f /etc/telegraf/telegraf.d/socket_listener.conf ]]; then
+    cat <<EOF >> /etc/telegraf/telegraf.d/socket_listener.conf
+[[inputs.socket_listener]]
+  service_address = "unix:///var/run/telegraf/telegraf.sock"
+  max_connections = 128
+  read_timeout = "10s"
+  data_format = "graphite"
+EOF
+  fi
 fi
 
 test -d $LOG_DIR || mkdir -p $LOG_DIR
 chown -R -L telegraf:telegraf $LOG_DIR
 chmod 755 $LOG_DIR
+
+test -d $RUN_DIR || mkdir -p $RUN_DIR
+chown -R -L telegraf:telegraf $RUN_DIR
+chmod 755  $RUN_DIR
 
 # add discover cron task
 if [[ -d /etc/cron.d ]] && [[ -d $LOG_DIR ]]; then
