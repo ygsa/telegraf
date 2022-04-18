@@ -95,8 +95,10 @@ main() {
         error "change servers to $SERVERS error"
       }
 
-      sed -i "s/#tls/tls/g" /etc/telegraf/telegraf.conf
-      sed -i "s/#insecure_skip_verify/insecure_skip_verify/" /etc/telegraf/telegraf.conf
+      if [[ $scheme == "https" ]]; then
+        sed -i "s/#tls/tls/g" /etc/telegraf/telegraf.conf
+        sed -i "s/#insecure_skip_verify/insecure_skip_verify/" /etc/telegraf/telegraf.conf
+      fi
     else
       error "no consul server alive!"
     fi
