@@ -1082,7 +1082,6 @@ sub get_telegraf_content {
 
 sub _make_line {
   my ($meta, $key, $value) = @_;
-  my $ts = time();
 
   # value must be integer
   unless ($value =~ /^\d+$/) {
@@ -1098,7 +1097,7 @@ sub _make_line {
     $line .= ";" if $k ne 'ip';
   }
 
-  $line .= " $value $ts";
+  $line .= " $value";
 
   return $line;
 }
