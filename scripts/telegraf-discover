@@ -81,7 +81,7 @@ my $conf    = "/etc/telegraf/telegraf.conf";
 my $confd   = "/etc/telegraf/telegraf.d";
 my $default = "/etc/default/telegraf";
 my $disf  = "/etc/telegraf/discover.conf";
-my $sock  = "/var/run/telegraf/telegraf.sock";
+my $sock  = "/var/log/telegraf/telegraf.sock";
 my $token = "";
 my $server;
 my $scheme;
@@ -826,7 +826,7 @@ sub new {
   $self->{update}  = $args{update} || 0;
   $self->{timeout} = $args{timeout} || 3;
   $self->{metas}   = Utils::get_default_meta($self->{default});
-  $self->{sockfile}= $args{sockfile} || '/var/run/telegraf/telegraf.sock';
+  $self->{sockfile}= $args{sockfile} || '/var/log/telegraf/telegraf.sock';
 
   return undef unless defined $self->{servers}->[0];
   return bless $self, $class;

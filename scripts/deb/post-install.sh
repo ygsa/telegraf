@@ -239,7 +239,7 @@ EOF
   if [[ ! -f /etc/telegraf/telegraf.d/socket_listener.conf ]]; then
     cat <<EOF >> /etc/telegraf/telegraf.d/socket_listener.conf
 [[inputs.socket_listener]]
-  service_address = "unix:///var/run/telegraf/telegraf.sock"
+  service_address = "unix:///var/log/telegraf/telegraf.sock"
   max_connections = 128
   read_timeout = "10s"
   data_format = "graphite"
