@@ -95,7 +95,7 @@ main() {
         error "change servers to $SERVERS error"
       }
 
-      if [[ $scheme == "https" ]]; then
+      if [[ $OPT_SCHEME == "https" ]]; then
         sed -i "s/#tls/tls/g" /etc/telegraf/telegraf.conf
         sed -i "s/#insecure_skip_verify/insecure_skip_verify/" /etc/telegraf/telegraf.conf
       fi
