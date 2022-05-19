@@ -166,7 +166,7 @@ func prepareFieldValues(fields map[string]string, typeMap map[string]configField
 	for key, val := range fields {
 		key = strings.Replace(key, "-", "_", -1)
 
-		if strings.EqualFold(key, "master_link_status") {
+		if strings.EqualFold(key, "master-link-status") {
 			if strings.EqualFold(val, "up") {
 				val = "1" // up
 			} else {
