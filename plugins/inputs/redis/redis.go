@@ -64,10 +64,10 @@ type RedisFieldTypes struct {
 	AllocatorRssRatio           float64 `json:"allocator_rss_ratio"`
 	AofCurrentRewriteTimeSec    int64   `json:"aof_current_rewrite_time_sec"`
 	AofEnabled                  int64   `json:"aof_enabled"`
-	AofLastBgrewriteStatus      string  `json:"aof_last_bgrewrite_status"`
+	AofLastBgrewriteStatus      int64   `json:"aof_last_bgrewrite_status"`
 	AofLastCowSize              int64   `json:"aof_last_cow_size"`
 	AofLastRewriteTimeSec       int64   `json:"aof_last_rewrite_time_sec"`
-	AofLastWriteStatus          string  `json:"aof_last_write_status"`
+	AofLastWriteStatus          int64   `json:"aof_last_write_status"`
 	AofRewriteInProgress        int64   `json:"aof_rewrite_in_progress"`
 	AofRewriteScheduled         int64   `json:"aof_rewrite_scheduled"`
 	BlockedClients              int64   `json:"blocked_clients"`
@@ -112,7 +112,7 @@ type RedisFieldTypes struct {
 	RdbBgsaveInProgress         int64   `json:"rdb_bgsave_in_progress"`
 	RdbChangesSinceLastSave     int64   `json:"rdb_changes_since_last_save"`
 	RdbCurrentBgsaveTimeSec     int64   `json:"rdb_current_bgsave_time_sec"`
-	RdbLastBgsaveStatus         string  `json:"rdb_last_bgsave_status"`
+	RdbLastBgsaveStatus         int64   `json:"rdb_last_bgsave_status"`
 	RdbLastBgsaveTimeSec        int64   `json:"rdb_last_bgsave_time_sec"`
 	RdbLastCowSize              int64   `json:"rdb_last_cow_size"`
 	RdbLastSaveTime             int64   `json:"rdb_last_save_time"`
@@ -123,6 +123,7 @@ type RedisFieldTypes struct {
 	ReplBacklogFirstByteOffset  int64   `json:"repl_backlog_first_byte_offset"`
 	ReplBacklogHistlen          int64   `json:"repl_backlog_histlen"`
 	ReplBacklogSize             int64   `json:"repl_backlog_size"`
+	MasterLinkStatus            int64   `json:"master_link_status"`
 	RssOverheadBytes            int64   `json:"rss_overhead_bytes"`
 	RssOverheadRatio            float64 `json:"rss_overhead_ratio"`
 	SecondReplOffset            int64   `json:"second_repl_offset"`
@@ -371,6 +372,7 @@ func gatherInfoOutput(
 
 	scanner := bufio.NewScanner(rdr)
 	fields := make(map[string]interface{})
+
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -461,6 +463,24 @@ func gatherInfoOutput(
 		if name == "role" {
 			tags["replication_role"] = val
 			continue
+		}
+
+		if name == "redis_version" {
+			tags["version"] = val
+			continue
+		}
+
+		if name == "maxmemory_policy" {
+			tags["maxmemory_policy"] = val
+			continue
+		}
+
+		if strings.EqualFold(name, "rdb_last_bgsave_status") || strings.EqualFold(name, "aof_last_bgrewrite_status") || strings.EqualFold(name, "aof_last_write_status") || strings.EqualFold(name, "master_link_status") {
+			if strings.EqualFold(val, "up") || strings.EqualFold(val, "ok") {
+				val = "1" // up or ok
+			} else {
+				val = "0"
+			}
 		}
 
 		fields[metric] = val
