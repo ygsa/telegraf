@@ -259,14 +259,35 @@ if ($is_trigger > 0) {
   }
 }
 
+sub _get_user_id {
+  my $user  = shift;
+  my $group = shift;
+
+  my $uid = getpwnam($user) || 0;
+  my $gid = getgrnam($group) || 0;
+
+  return ($uid, $gid);
+}
+
 sub is_telegraf_conf_ok {
+  my $status = 0;
   my $cmd = "telegraf --test  --config /etc/telegraf/telegraf.conf >/dev/null 2>&1";
   my($high, $low) = Utils::exec_system("$cmd");
   if ($high != 0 || $low != 0) {
-    return 0;
+    $status = 0;
+  }
+  else {
+    $status = 1;
   }
 
-  return 1;
+  # change telegraf.log permission
+  my ($uid, $gid) = _get_user_id("telegraf", "telegraf");
+  my $logfile = "/var/log/telegraf/telegraf.log";
+  if (-e $logfile) {
+    chown($uid, $gid, $logfile) or Utils::time_print("warn - change $logfile permission error!");
+  }
+
+  return $status;
 }
 
 =head1 AUTHOR
