@@ -42,6 +42,7 @@ type Mysql struct {
 	PerfSummaryEvents                   []string `toml:"perf_summary_events"`
 	IntervalSlow                        string   `toml:"interval_slow"`
 	MetricVersion                       int      `toml:"metric_version"`
+	GatherErrorQuiet                    bool     `toml:"gather_error_quiet"`
 
 	Log telegraf.Logger `toml:"-"`
 	tls.ClientConfig
@@ -73,6 +74,9 @@ const sampleConfig = `
   ## Telegraf >=1.6: metric_version = 2
   ##           <1.6: metric_version = 1 (or unset)
   metric_version = 2
+
+  ## we'll ignore to log error message if gather error
+  # gather_error_quiet = false
 
   ## if the list is empty, then metrics are gathered from all database tables
   # table_schema_databases = []
@@ -505,7 +509,7 @@ func (m *Mysql) gatherServer(serv string, acc telegraf.Accumulator) error {
 
 	if m.GatherBinaryLogs {
 		err = m.gatherBinaryLogs(db, serv, acc)
-		if err != nil {
+		if err != nil && !m.GatherErrorQuiet {
 			m.Log.Warn("I! skip to gather binary logs...")
 		}
 	}
@@ -519,7 +523,7 @@ func (m *Mysql) gatherServer(serv string, acc telegraf.Accumulator) error {
 
 	if m.GatherUserStatistics {
 		err = m.GatherUserStatisticsStatuses(db, serv, acc)
-		if err != nil {
+		if err != nil && !m.GatherErrorQuiet {
 			m.Log.Warn("I! skip to gather user statistics...")
 		}
 	}
@@ -540,7 +544,7 @@ func (m *Mysql) gatherServer(serv string, acc telegraf.Accumulator) error {
 
 	if m.GatherInnoDBMetrics {
 		err = m.gatherInnoDBMetrics(db, serv, acc)
-		if err != nil {
+		if err != nil && !m.GatherErrorQuiet {
 			m.Log.Warn("I! skip to gather innodb metrics...")
 		}
 	}

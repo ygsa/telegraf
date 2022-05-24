@@ -1911,6 +1911,9 @@ sub disc_mysql {
   ##           <1.6: metric_version = 1 (or unset)
   metric_version = 2
 
+  ## we'll ignore to log error message if gather error
+  gather_error_quiet = true
+
   ## if the list is empty, then metrics are gathered from all database tables
   # table_schema_databases = []
 
