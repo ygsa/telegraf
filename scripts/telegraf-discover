@@ -137,6 +137,7 @@ my $consul = Consul->new(
 #croak "consul new error" unless defined $consul;
 
 my $discover = '';
+my $force_overwrite = 0;
 if (defined $consul) {
   # check consul server is ok
   croak "no alive consul server, will exit..." unless defined $consul->{servers};
@@ -149,12 +150,21 @@ if (defined $consul) {
 
   Utils::create_dir_if("$confd") 
       or croak "create $confd error and $confd is not exist";
+
+  if (length($discover) > 0 && -e $disf) {
+    my $crc_file = Utils::file_crc32($disf) || 'NULL';
+    my $crc_disc = Utils::string_crc32($discover);
+    if ($crc_file ne $crc_disc) {
+      $force_overwrite = 1;
+      print "overwrite $disf error!" unless Utils::write_file($disf, $discover);
+    }
+  }
 }
 else {
   $discover = Utils::read_cfg($disf);
 }
 
-my $disconf = Disconf->new( (update => $update) );
+my $disconf = Disconf->new( (update => $update, force => $force_overwrite) );
 my $results = $disconf->get_server_list();
 my $sects   = Utils::parsecfg($discover);
 $| = 1; # enforce flush for print
@@ -816,6 +826,21 @@ sub get_default_meta {
   return \%meta;
 }
 
+sub write_file {
+  my ($file, $content) = @_;
+
+  return 0 unless defined $content;
+  open my $fh, '>', $file
+     or warn "open $file error: $!";
+
+  return 0 unless defined $fh;
+
+  print $fh $content;
+  close($fh);
+
+  return 1;
+}
+
 1;
 
 # ########################################################
@@ -1141,9 +1166,17 @@ sub send_custom_to_graphite {
 }
 
 sub _parse_consulkv {
-  my $msg = shift || '{"Status": 599, "Flags": 0, "Value": ""}';
+  my $msg = shift;
 
-  return JSONTiny::decode_json($msg);
+  my $json_out;
+  eval {
+    $json_out = JSONTiny::decode_json($msg);
+  };
+  if ($@) {
+    $json_out = JSONTiny::decode_json('{"Status": 599, "Flags": 0, "Value": ""}');
+  }
+
+  return $json_out;
 }
 
 sub make_consul_request {
@@ -1510,6 +1543,7 @@ sub new {
   my ($class, %args) = @_;
   my $self = {};
   $self->{update} = $args{update} || 0;
+  $self->{force}  = $args{force} || 0;
   return bless $self, $class;
 }
 
@@ -1563,25 +1597,19 @@ sub _get_file_mtime {
   return $mtime;
 }
 
-sub _get_telegraf_stime {
-  my $pid  = Utils::exec_cmd_return("pidof telegraf");
-  my $file = "/proc/$pid/cmdline";
-
-  return _get_file_mtime($file);
-}
-
 sub is_telegraf_conf_change {
   my $self = shift;
   my $path = shift;
 
-  my $teletime  = _get_telegraf_stime();
-
+  my $ts_now    = time;
   my @cnfs      = Utils::get_confd_list($path);
   foreach my $k (@cnfs) {
     next if $k =~ /discover/i;
 
     my $ft = _get_file_mtime($k);
-    return 1 if $ft > $teletime;
+    if (abs($ft - $ts_now) < 90) {
+      return 1;
+    }
   }
 
   return 0;
@@ -2488,6 +2516,7 @@ sub gen_conf_for_listen {
 
     my $user = $secs->{user} || undef;
     my $pass = $secs->{$port} || $secs->{pass} || undef;
+    $pass = undef if (defined $pass && $pass =~ m/''|""/i);
     my $is_local = $secs->{is_local} || 0;
 
     if ($type eq 'mysql') {
@@ -2518,7 +2547,7 @@ sub gen_conf_for_listen {
   my @cur_ports = _get_monitor_ports($cnf);
   my $comp_diff = _diff_compare(\@ports, \@cur_ports, \@ignore_ports);
 
-  my $counter = @{$comp_diff->{add}} + @{$comp_diff->{del}};
+  my $counter = @{$comp_diff->{add}} + @{$comp_diff->{del}} + $self->{force};
   if ($counter > 0) {
     _diff_print($type, $comp_diff);
     if ($self->is_update()) {
