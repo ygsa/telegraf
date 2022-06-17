@@ -49,9 +49,9 @@ type Procstat struct {
 	procs           map[PID]Process
 	createProcess   func(PID) (Process, error)
 
-	PathProcgather string          `toml:path_procgather`
-	UseSudo        bool            `toml:use_sudo`
-	Timeout        config.Duration `toml:timeout`
+	PathProcgather string          `toml:"path_procgather"`
+	UseSudo        bool            `toml:"use_sudo"`
+	Timeout        config.Duration `toml:"timeout"`
 	Log            telegraf.Logger `toml:"-"`
 }
 
