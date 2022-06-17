@@ -30,10 +30,10 @@ const (
 var invalidByteQuantityError = errors.New("byte quantity must be a positive integer with a unit of measurement like M, MB, MiB, G, GiB, or GB")
 
 type Megacli struct {
-	PathMegacli      string           `toml:path_megacli`
-	GatherType       []string         `toml:gather_type`
-	UseSudo          bool             `toml:use_sudo`
-	Timeout          config.Duration  `toml:timeout`
+	PathMegacli      string           `toml:"path_megacli"`
+	GatherType       []string         `toml:"gather_type"`
+	UseSudo          bool             `toml:"use_sudo"`
+	Timeout          config.Duration  `toml:"timeout"`
 	Log              telegraf.Logger  `toml:"-"`
 }
 

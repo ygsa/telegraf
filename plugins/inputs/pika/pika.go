@@ -50,9 +50,9 @@ type PikaClient struct {
 // PikaFieldTypes defines the types expected for each of the fields redis reports on
 type PikaFieldTypes struct {
 	Clients                     int64   `json:"clients"`
-	TcpPort                     int64   `json:tcp_port`
-	ArchBits                    int64   `json:arch_bits`
-	ProcessID                   int64   `json:process_id`
+	TcpPort                     int64   `json:"tcp_port"`
+	ArchBits                    int64   `json:"arch_bits"`
+	ProcessID                   int64   `json:"process_id"`
 	ConnectedSlaves             int64   `json:"connected_slaves"`
 	EvictedKeys                 int64   `json:"evicted_keys"`
 	ExpireCycleCPUMilliseconds  int64   `json:"expire_cycle_cpu_milliseconds"`
@@ -73,14 +73,14 @@ type PikaFieldTypes struct {
 	UsedCPUUserChildren         float64 `json:"used_cpu_user_children"`
 	UsedMemory                  int64   `json:"used_memory"`
 	ServerId                    int64   `json:"server_id"`
-	IsBgsaving                  string  `json:is_bgsaving`
-	IsCompact                   string  `json:is_compact`
-	IsScaningKeyspace           string  `json:is_scaning_keyspace`
-	LogSize                     int64   `json:log_size`
-	DBFatal                     int64   `json:db_fatal`
-	DBMemtableUsage             int64   `json:db_memtable_usage`
-	DBSize                      int64   `json:db_size`
-	DBTablereaderUsage          int64   `json:db_tablereader_usage`
+	IsBgsaving                  string  `json:"is_bgsaving"`
+	IsCompact                   string  `json:"is_compact"`
+	IsScaningKeyspace           string  `json:"is_scaning_keyspace"`
+	LogSize                     int64   `json:"log_size"`
+	DBFatal                     int64   `json:"db_fatal"`
+	DBMemtableUsage             int64   `json:"db_memtable_usage"`
+	DBSize                      int64   `json:"db_size"`
+	DBTablereaderUsage          int64   `json:"db_tablereader_usage"`
 }
 
 func (r *PikaClient) Do(returnType string, args ...interface{}) (interface{}, error) {
