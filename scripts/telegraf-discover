@@ -360,8 +360,13 @@ sub create_cnf_if {
   }
 
   unless (defined $res) {
-    time_print("ignore $cnf, as empty content!");
-    return 0;
+    if ($force) {
+      $res = "";
+    }
+    else {
+      time_print("ignore $cnf, as empty content!");
+      return 0;
+    }
   }
 
   # write res to cnf
