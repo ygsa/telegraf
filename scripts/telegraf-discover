@@ -136,6 +136,11 @@ my $consul = Consul->new(
 ## check consul handle
 #croak "consul new error" unless defined $consul;
 
+# skip consul when set ID and IP
+if (defined $default_meta->{id} and defined $default_meta->{ip}) {
+  $consul = undef;
+}
+
 my $discover = '';
 my $force_overwrite = 0;
 if (defined $consul) {
