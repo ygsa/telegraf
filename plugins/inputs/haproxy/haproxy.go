@@ -222,6 +222,37 @@ var fieldRenames = map[string]string{
 	"hrsp_other": "http_response.other",
 }
 
+var statMaps = map[string]int{
+	"DOWN":	    0,
+	"OPEN":     1,
+	"UP":       2,
+	"NOLB":     3,
+	"MAINT":    4,
+	"no check": 5,
+}
+
+var checkMaps = map[string]int{
+	"UNK":        0,
+	"INI":        1,
+	"CHECKED":    2,
+	"HANA":       3,
+	"SOCKERR":    4,
+	"L4OK":       5,
+	"L4TOUT":     6,
+	"L4CON":      7,
+	"L6OK":       8,
+	"L6TOUT":     9,
+	"L6RSP":      10,
+	"L7TOUT":     11,
+	"L7RSP":      12,
+	"L7OK":       13,
+	"L7OKC":      14,
+	"L7STS":      15,
+	"PROCERR":    16,
+	"PROCTOUT":   17,
+	"PROCOK":     18,
+}
+
 func (h *haproxy) importCsvResult(r io.Reader, acc telegraf.Accumulator, host string) error {
 	csvr := csv.NewReader(r)
 	now := time.Now()
@@ -279,7 +310,23 @@ func (h *haproxy) importCsvResult(r io.Reader, acc telegraf.Accumulator, host st
 				tags[fieldName] = typeNames[vi]
 			case "check_desc", "agent_desc":
 				// do nothing. These fields are just a more verbose description of the check_status & agent_status fields
-			case "status", "check_status", "last_chk", "mode", "tracked", "agent_status", "last_agt", "addr", "cookie":
+			case "status":
+				if val, ok := statMaps[v]; ok {
+					fields[fieldName] = val
+				} else {
+					fields[fieldName] = -1
+				}
+			case "check_status", "agent_status":
+				if val, ok := checkMaps[v]; ok {
+					fields[fieldName] = val
+				} else {
+					fields[fieldName] = -1
+				}
+			case "addr":
+				tags[fieldName] = v
+			case "mode":
+				tags[fieldName] = v
+			case "last_chk", "tracked", "last_agt", "cookie":
 				// these are string fields
 				fields[fieldName] = v
 			case "lastsess":

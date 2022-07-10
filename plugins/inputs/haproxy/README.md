@@ -97,20 +97,54 @@ documentation](https://cbonte.github.io/haproxy-dconv/1.8/management.html#9.1).
     - `proxy` - proxy name
     - `sv` - service name
     - `type` - proxy session type
-  - fields:
-    - `status` (string)
-    - `check_status` (string)
-    - `last_chk` (string)
     - `mode` (string)
+    - `addr`(string) # if type is server
+  - fields:
+    - `status` (int)
+    - `check_status` (int)
+    - `last_chk` (string)
     - `tracked` (string)
-    - `agent_status` (string)
+    - `agent_status` (int)
     - `last_agt` (string)
-    - `addr` (string)
     - `cookie` (string)
     - `lastsess` (int)
     - **all other stats** (int)
 
+> status, check_status and agent_status use the following value:
+```
+status:
+        "DOWN":     0,
+        "OPEN":     1,
+        "UP":       2,
+        "NOLB":     3,
+        "MAINT":    4,
+        "no check": 5,
+
+check_status, agent_status:
+        "UNK":        0,
+        "INI":        1,
+        "CHECKED":    2,
+        "HANA":       3,
+        "SOCKERR":    4,
+        "L4OK":       5,
+        "L4TOUT":     6,
+        "L4CON":      7,
+        "L6OK":       8,
+        "L6TOUT":     9,
+        "L6RSP":      10,
+        "L7TOUT":     11,
+        "L7RSP":      12,
+        "L7OK":       13,
+        "L7OKC":      14,
+        "L7STS":      15,
+        "PROCERR":    16,
+        "PROCTOUT":   17,
+        "PROCOK":     18,
+```
+
+> read more from [haproxy-configuration](https://www.haproxy.org/download/1.8/doc/configuration.txt), `section 9.1`.
+
 ### Example Output:
 ```
-haproxy,server=/run/haproxy/admin.sock,proxy=public,sv=FRONTEND,type=frontend http_response.other=0i,req_rate_max=1i,comp_byp=0i,status="OPEN",rate_lim=0i,dses=0i,req_rate=0i,comp_rsp=0i,bout=9287i,comp_in=0i,mode="http",smax=1i,slim=2000i,http_response.1xx=0i,conn_rate=0i,dreq=0i,ereq=0i,iid=2i,rate_max=1i,http_response.2xx=1i,comp_out=0i,intercepted=1i,stot=2i,pid=1i,http_response.5xx=1i,http_response.3xx=0i,http_response.4xx=0i,conn_rate_max=1i,conn_tot=2i,dcon=0i,bin=294i,rate=0i,sid=0i,req_tot=2i,scur=0i,dresp=0i 1513293519000000000
+haproxy,mode="http",server=/run/haproxy/admin.sock,proxy=public,sv=FRONTEND,type=frontend http_response.other=0i,req_rate_max=1i,comp_byp=0i,status=1,rate_lim=0i,dses=0i,req_rate=0i,comp_rsp=0i,bout=9287i,comp_in=0i,smax=1i,slim=2000i,http_response.1xx=0i,conn_rate=0i,dreq=0i,ereq=0i,iid=2i,rate_max=1i,http_response.2xx=1i,comp_out=0i,intercepted=1i,stot=2i,pid=1i,http_response.5xx=1i,http_response.3xx=0i,http_response.4xx=0i,conn_rate_max=1i,conn_tot=2i,dcon=0i,bin=294i,rate=0i,sid=0i,req_tot=2i,scur=0i,dresp=0i 1513293519000000000
 ```
