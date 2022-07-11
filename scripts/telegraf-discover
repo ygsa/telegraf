@@ -1561,7 +1561,7 @@ sub is_support {
   my $self = shift;
   my $type = shift;
 
-  my @lists = qw(memcached redis pika mysql mongodb postgresql dns_query megacli iptables);
+  my @lists = qw(memcached redis pika mysql mongodb postgresql dns_query megacli iptables haproxy);
   foreach my $k (@lists) {
     return 1 if $k eq $type;
   }
@@ -1685,6 +1685,7 @@ sub get_server_list {
     "pika"         => "pika",
     "postgres"     => "postgresql",
     "postmaster"   => "postgresql",
+    "haproxy"      => "haproxy",
   );
 
   # full lists
@@ -1697,7 +1698,7 @@ sub get_server_list {
 
   foreach my $k (split(/\n/, $res)) {
     # filter non-db program
-    next unless $k =~ m/(?:mysqld|memcached|redis-server|mongod|pika|postgres|postmaster)/i;
+    next unless $k =~ m/(?:mysqld|memcached|redis-server|mongod|pika|postgres|postmaster|haproxy)/i;
     my @items = split(/\s+/, $k, 7);
 
     local $_ = "$items[3] $items[-1]";
@@ -2476,6 +2477,47 @@ TEMP_END
   return _replace_postgresql($temp, $items);
 }
 
+# ignore items, as we only use socket to monit haproxy
+sub disc_haproxy {
+  my $self  = shift;
+  my $items = shift;
+
+  my $temp = <<'TEMP_END';
+# Read metrics of HAProxy, via socket or HTTP stats page
+[[inputs.haproxy]]
+  ## An array of address to gather stats about. Specify an ip on hostname
+  ## with optional port. ie localhost, 10.10.3.33:1936, etc.
+  ## Make sure you specify the complete path to the stats endpoint
+  ## including the protocol, ie http://10.10.3.33:1936/haproxy?stats
+
+  ## Credentials for basic HTTP authentication
+  # username = "admin"
+  # password = "admin"
+
+  ## If no servers are specified, then default to 127.0.0.1:1936/haproxy?stats
+  #servers = ["http://myhaproxy.com:1936/haproxy?stats"]
+
+  ## You can also use local socket with standard wildcard globbing.
+  ## Server address not starting with 'http' will be treated as a possible
+  ## socket, so both examples below are valid.
+  servers = ["/var/run/haproxy-lb.sock"]
+
+  ## By default, some of the fields are renamed from what haproxy calls them.
+  ## Setting this option to true results in the plugin keeping the original
+  ## field names.
+  # keep_field_names = false
+
+  ## Optional TLS Config
+  # tls_ca = "/etc/telegraf/ca.pem"
+  # tls_cert = "/etc/telegraf/cert.pem"
+  # tls_key = "/etc/telegraf/key.pem"
+  ## Use TLS but skip chain & host verification
+  # insecure_skip_verify = false
+TEMP_END
+
+  return $temp;
+}
+
 sub temp_outs {
   my $self  = shift;
   my $type  = shift;
@@ -2490,6 +2532,7 @@ sub temp_outs {
       'redis'     => $self->disc_redis($items),
       'pika'      => $self->disc_pika($items),
       'postgresql'=> $self->disc_postgresql($items),
+      'haproxy'   => $self->disc_haproxy($items),
     );
   }
 
@@ -2555,6 +2598,11 @@ sub gen_conf_for_listen {
 
   # get current monitor port list and compare
   my @cur_ports = _get_monitor_ports($cnf);
+
+  # use socket file for haproxy stat report
+  if ($type eq 'haproxy' && -e $cnf) {
+    @cur_ports = @ports;
+  }
   my $comp_diff = _diff_compare(\@ports, \@cur_ports, \@ignore_ports);
 
   my $counter = @{$comp_diff->{add}} + @{$comp_diff->{del}} + $self->{force};
