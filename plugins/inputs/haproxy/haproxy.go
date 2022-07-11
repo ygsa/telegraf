@@ -323,7 +323,9 @@ func (h *haproxy) importCsvResult(r io.Reader, acc telegraf.Accumulator, host st
 					fields[fieldName] = -1
 				}
 			case "addr":
-				tags[fieldName] = v
+				if tags["type"] == "server" {
+					tags[fieldName] = v
+				}
 			case "mode":
 				tags[fieldName] = v
 			case "last_chk", "tracked", "last_agt", "cookie":
@@ -345,7 +347,11 @@ func (h *haproxy) importCsvResult(r io.Reader, acc telegraf.Accumulator, host st
 				fields[fieldName] = vi
 			}
 		}
-		acc.AddFields("haproxy", fields, tags, now)
+		metricName := "haproxy"
+		if tags["type"] != "" {
+			metricName = metricName + "_" + tags["type"]
+		}
+		acc.AddFields(metricName, fields, tags, now)
 	}
 	return err
 }
