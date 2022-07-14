@@ -124,7 +124,7 @@ func main() {
 			}
 		}
 
-		cpuPerc, err := proc.Percent(time.Duration(0))
+		cpuPerc, err := proc.Percent(time.Duration(500 * time.Millisecond))
 		if err == nil {
 			solarisMode := isSolaris()
 			if solarisMode {
