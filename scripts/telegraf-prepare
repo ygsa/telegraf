@@ -124,11 +124,12 @@ ID="$OPT_ID"
 IP="$OPT_IP"
 EOF
 
+  SERVER_STR=$(get_valid_servers $OPT_SERVER1 $OPT_SERVER2)
   if [[ $OPT_TOKEN != "NULL" ]]; then
 cat <<EOF >> /etc/default/telegraf
 SCHEME="$OPT_SCHEME"
 TOKEN="$OPT_TOKEN"
-SERVER="$OPT_SERVER1, $OPT_SERVER2"
+SERVER="$SERVER_STR"
 EOF
   fi
 
@@ -148,7 +149,7 @@ MARK="$OPT_MARK"
 TEAM="$OPT_TEAM"
 IP="$IP"
 TOKEN="$OPT_TOKEN"
-SERVER="$OPT_SERVER1, $OPT_SERVER2"
+SERVER="$SERVER_STR"
 SCHEME="$OPT_SCHEME"
 EOF
   fi
@@ -170,6 +171,19 @@ Thanks for using telegraf!
 ----------------------------------------------------------------------
 BANNER
 
+}
+
+get_valid_servers() {
+  local server1="$1"
+  local server2="$2"
+
+  echo -e "$server1 $server2" | \
+    perl -ne '
+      chomp;
+      my $line = $_;
+      my @m = grep(!/NULL/i, split(/\s+/, $line, 2));
+      print join(", ", @m);
+    '
 }
 
 is_ip_private() {
