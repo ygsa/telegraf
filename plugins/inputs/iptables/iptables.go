@@ -152,6 +152,9 @@ func (ipt *Iptables) parseAndGather(chain, data string, acc telegraf.Accumulator
 			acc.AddFields(measurement, fields, tags)
 		}
 	} else {
+		if len(lines) < 2 {
+			return nil
+		}
 		lenLines := len(lines) - 1 // ignore last empty line
 		maxN := lenLines - 1
 		tags := map[string]string{"table": ipt.Table, "chain": strings.ToLower(chain)}
