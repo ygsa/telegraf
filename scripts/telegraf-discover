@@ -76,6 +76,9 @@ BEGIN {
    ));
 }
 
+# force flush
+$| = 1;
+
 my($update,$verbose,$help);
 my $conf    = "/etc/telegraf/telegraf.conf";
 my $confd   = "/etc/telegraf/telegraf.d";
@@ -108,6 +111,20 @@ sub usage {
   my $name = shift;
   system("perldoc -T $name");
   exit 0;
+}
+
+open my $fp, "<", $0
+     or warn "open $0 error: $!";
+
+unless (defined $fp) {
+  Utils::time_print("fp error, exit ...");
+  exit 1;
+}
+
+# exit if flock error
+unless (flock($fp, 2|4)) {
+  Utils::time_print("cann't get flock, exit...");
+  exit 1;
 }
 
 # random sleep to avoid make too stress to consul
