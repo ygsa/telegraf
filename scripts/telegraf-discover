@@ -900,6 +900,7 @@ sub new {
   $self->{timeout} = $args{timeout} || 3;
   $self->{metas}   = Utils::get_default_meta($self->{default});
   $self->{sockfile}= $args{sockfile} || '/var/log/telegraf/telegraf.sock';
+  $self->{consul_fail} = 0;
 
   return undef unless defined $self->{servers}->[0];
   return bless $self, $class;
@@ -1213,9 +1214,11 @@ sub make_consul_request {
 
   $key =~ s/^\/// if $key =~ /^\//;
   my $token   = $self->{token};
-  my $timeout = $self->{timeout} || 5;
+  my $timeout = $self->{timeout} || 3;
+  $timeout    .= "s" if $timeout =~ /^\d+$/;
+
   my $scheme  = lc($self->{scheme});
-  my $command = "consul-kv -server $server -token $token -key $key -meta";
+  my $command = "consul-kv -server $server -token $token -key $key -meta -timeout $timeout";
 
   $command .= " -tls" if $scheme eq 'https';
   my $response = _parse_consulkv(Utils::exec_cmd_return("$command"));
@@ -1224,6 +1227,10 @@ sub make_consul_request {
   $result{status} = $response->{Status} || -99;
   unless (grep(/^$result{status}$/, qw(200 403 404))) {
     Utils::time_print("consul request is not ok, unkown error, status code: $result{status}");
+  }
+
+  if ($result{status} == 599) {
+    $self->{consul_fail} += 1;
   }
 
   if ($result{status} == 200) {
@@ -1546,11 +1553,16 @@ sub make_consul_discover {
   Utils::time_print("discover consul for interval.");
   $counter += $self->gen_new_interval_conf();
 
-  Utils::time_print("discover consul for inputs.");
-  $counter += $self->gen_new_inputs_conf();
-
-  Utils::time_print("discover consul for timechange.");
-  $counter += $self->gen_new_timechange_conf();
+  if ($self->{consul_fail}) {
+    Utils::time_print("consul request error, skip the other check...");
+  }
+  else {
+    Utils::time_print("discover consul for inputs.");
+    $counter += $self->gen_new_inputs_conf();
+   
+    Utils::time_print("discover consul for timechange.");
+    $counter += $self->gen_new_timechange_conf();
+  }
 
   return $counter;
 }
