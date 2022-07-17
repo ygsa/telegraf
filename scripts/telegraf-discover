@@ -155,6 +155,13 @@ my $consul = Consul->new(
 
 # skip consul when set ID and IP
 if (defined $default_meta->{id} and defined $default_meta->{ip}) {
+  Utils::time_print("disable consul feature...");
+  $consul = undef;
+}
+
+# skip consul when set disable_consul
+if (defined $default_meta->{disable_consul} and $default_meta->{disable_consul} == 1) {
+  Utils::time_print("disable consul feature...");
   $consul = undef;
 }
 
