@@ -174,32 +174,6 @@ EOF
 EOF
   fi
 
-  # add iptables check
-  if [[ ! -f /etc/telegraf/telegraf.d/iptables.conf ]]; then
-    cat <<EOF >> /etc/telegraf/telegraf.d/iptables.conf
-## Gather packets and bytes throughput from iptables
-#[[inputs.iptables]]
-#  ## iptables require root access on most systems.
-#  ## Setting 'use_sudo' to true will make use of sudo to run iptables.
-#  ## Users must configure sudo to allow telegraf user to run iptables with no password.
-#  ## iptables can be restricted to only list command "iptables -nvL".
-#  use_sudo = true
-#  Setting 'use_rule' to true to get ruleid result. default is true
-#  use_rule = false
-#  ## Setting 'use_lock' to true runs iptables with the "-w" option.
-#  ## Adjust your sudo settings appropriately if using this option ("iptables -w 5 -nvl")
-#  use_lock = false
-#  ## Define an alternate executable, such as "ip6tables". Default is "iptables".
-#  binary = "iptables"
-#  ## defines the table to monitor:
-#  table = "filter"
-#  ## defines the chains to monitor.
-#  ## NOTE: iptables rules without a comment will not be monitored when use_rule is true.
-#  ## Read the plugin documentation for more information.
-#  chains = [ "INPUT" ]
-EOF
-  fi
-
   if [[ ! -f /etc/telegraf/telegraf.d/http_response.conf ]]; then
     cat <<EOF >> /etc/telegraf/telegraf.d/http_response.conf
 ## HTTP/HTTPS request given an address a method and a timeout
