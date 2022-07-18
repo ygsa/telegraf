@@ -108,7 +108,7 @@ main() {
 	fi
       fi
     else
-      error "no consul server alive!"
+      error "no server alive!"
     fi
   fi
 
