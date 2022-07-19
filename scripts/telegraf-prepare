@@ -112,6 +112,8 @@ main() {
     fi
   fi
 
+  SERVER_STR=$(get_valid_servers $OPT_SERVER1 $OPT_SERVER2)
+
   if [[ "$OPT_ID" != "NULL" && "$OPT_IP" != "NULL" ]]; then
     # delete team, mark, dc line
     if grep '$MARK' /etc/telegraf/telegraf.conf >/dev/null; then
@@ -124,8 +126,8 @@ ID="$OPT_ID"
 IP="$OPT_IP"
 EOF
 
-  SERVER_STR=$(get_valid_servers $OPT_SERVER1 $OPT_SERVER2)
   if [[ $OPT_TOKEN != "NULL" ]]; then
+
 cat <<EOF >> /etc/default/telegraf
 SCHEME="$OPT_SCHEME"
 TOKEN="$OPT_TOKEN"
