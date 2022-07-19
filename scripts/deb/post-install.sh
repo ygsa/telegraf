@@ -242,42 +242,42 @@ if [[ -d /etc/sudoers.d ]]; then
     cat <<EOF > /etc/sudoers.d/telegraf
 Cmnd_Alias MEGACLI = /usr/bin/MegaCli
 telegraf	ALL=(root)	NOPASSWD: MEGACLI
-Defaults!MEGACLI !logfile, !syslog, !pam_session
+Defaults!MEGACLI !logfile, !syslog, !pam_session, !requiretty
 
 Cmnd_Alias IPTABLESSHOW = /sbin/iptables -S *
 telegraf	ALL=(root)	NOPASSWD: IPTABLESSHOW
-Defaults!IPTABLESSHOW !logfile, !syslog, !pam_session
+Defaults!IPTABLESSHOW !logfile, !syslog, !pam_session, !requiretty
 
 Cmnd_Alias IPTABLESSUM = /sbin/iptables -nvL *
 telegraf	ALL=(root)	NOPASSWD: IPTABLESSUM
-Defaults!IPTABLESSUM !logfile, !syslog, !pam_session
+Defaults!IPTABLESSUM !logfile, !syslog, !pam_session, !requiretty
 
 Cmnd_Alias PROCGATHER = /usr/bin/procgather *
 telegraf	ALL=(root)	NOPASSWD: PROCGATHER
-Defaults!PROCGATHER !logfile, !syslog, !pam_session
+Defaults!PROCGATHER !logfile, !syslog, !pam_session, !requiretty
 EOF
 
 if ! visudo -c -f /etc/sudoers.d/telegraf >/dev/null 2>&1; then
     cat <<EOF > /etc/sudoers.d/telegraf
 Cmnd_Alias MEGACLI = /usr/bin/MegaCli
 telegraf	ALL=(root)	NOPASSWD: MEGACLI
-Defaults!MEGACLI !logfile, !syslog
+Defaults!MEGACLI !logfile, !syslog, !requiretty
 
 Cmnd_Alias IPTABLESSHOW = /sbin/iptables -S *
 telegraf	ALL=(root)	NOPASSWD: IPTABLESSHOW
-Defaults!IPTABLESSHOW !logfile, !syslog
+Defaults!IPTABLESSHOW !logfile, !syslog, !requiretty
 
 Cmnd_Alias IPTABLESSUM = /sbin/iptables -nvL *
 telegraf	ALL=(root)	NOPASSWD: IPTABLESSUM
-Defaults!IPTABLESSUM !logfile, !syslog
+Defaults!IPTABLESSUM !logfile, !syslog, !requiretty
 
 Cmnd_Alias PROCGATHER = /usr/bin/procgather *
 telegraf	ALL=(root)	NOPASSWD: PROCGATHER
-Defaults!PROCGATHER !logfile, !syslog, !pam_session
+Defaults!PROCGATHER !logfile, !syslog, !requiretty
 
 Cmnd_Alias IPMITOOL = /usr/bin/ipmitool *
 telegraf	ALL=(root)	 NOPASSWD: IPMITOOL
-Defaults!IPMITOOL !logfile, !syslog, !pam_session
+Defaults!IPMITOOL !logfile, !syslog, !requiretty
 EOF
 fi
 
