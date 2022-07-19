@@ -85,7 +85,7 @@ main() {
     error "schema must be http or https"
   fi
 
-  if [[ ! $(is_ip_private $OPT_SERVER1) || ! $(is_ip_private $OPT_SERVER2) ]]; then
+  if ! $(is_ip_private $OPT_SERVER1) || ! $(is_ip_private $OPT_SERVER2); then
     OPT_SCHEME="https"
   fi
 
