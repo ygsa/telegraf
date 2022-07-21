@@ -70,9 +70,9 @@ main() {
   OPT_SERVER2="${OPT_SERVER2:-"NULL"}"
   OPT_SCHEME="${OPT_SCHEME:-"http"}"
 
-  if [[ ($OPT_ID == "NULL" && $OPT_IP == "NULL") && \
+  if [[ ($OPT_ID == "NULL" && $OPT_IP == "NULL" && $OPT_MARK == "NULL") && \
         ($OPT_DC == "NULL" && $OPT_MARK == "NULL" && $OPT_TEAM == "NULL") ]]; then
-    error "both of the -u -i or -d, -m, -t are NULL, skip..."
+    error "both of the -u, -i, -m or -d, -m, -t are NULL, skip..."
   fi
 
   if [[ $OPT_SERVER1 == "NULL" \
@@ -114,16 +114,17 @@ main() {
 
   SERVER_STR=$(get_valid_servers $OPT_SERVER1 $OPT_SERVER2)
 
-  if [[ "$OPT_ID" != "NULL" && "$OPT_IP" != "NULL" ]]; then
+  if [[ "$OPT_ID" != "NULL" && "$OPT_IP" != "NULL" && "$OPT_MARK" != "NULL" ]]; then
     # delete team, mark, dc line
-    if grep '$MARK' /etc/telegraf/telegraf.conf >/dev/null; then
-      sed -i "5,7d" /etc/telegraf/telegraf.conf
+    if grep '$TEAM' /etc/telegraf/telegraf.conf >/dev/null; then
+      sed -i "6,7d" /etc/telegraf/telegraf.conf
     fi
     
     # at least one server ok, then change the telegraf default
   cat <<EOF > /etc/default/telegraf
 ID="$OPT_ID"
 IP="$OPT_IP"
+MARK="$OPT_MARK"
 EOF
 
   if [[ $OPT_TOKEN != "NULL" ]]; then
