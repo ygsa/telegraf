@@ -1990,6 +1990,10 @@ func dsnAddTimeout(dsn string) (string, error) {
 	}
 
 	if conf.Timeout == 0 {
+		conf.Timeout = time.Second * 3
+	}
+
+	if conf.readTimeout == 0 {
 		conf.Timeout = time.Second * 5
 	}
 
