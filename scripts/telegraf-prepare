@@ -68,7 +68,7 @@ main() {
   OPT_TOKEN="${OPT_TOKEN:-"NULL"}"
   OPT_SERVER1="${OPT_SERVER1:-"NULL"}"
   OPT_SERVER2="${OPT_SERVER2:-"NULL"}"
-  OPT_SCHEME="${OPT_SCHEME:-"http"}"
+  OPT_SCHEME="${OPT_SCHEME:-"https"}"
 
   if [[ ($OPT_ID == "NULL" && $OPT_IP == "NULL" && $OPT_MARK == "NULL") && \
         ($OPT_DC == "NULL" && $OPT_MARK == "NULL" && $OPT_TEAM == "NULL") ]]; then
@@ -80,13 +80,18 @@ main() {
     error "must set servers"
   fi
 
+  if ! $(is_ip_valid $OPT_SERVER1) && ! $(is_ip_valid $OPT_SERVER2); then
+    error "must set valid ip address"
+  fi
+
   if [[ $OPT_SCHEME != "http" \
         && $OPT_SCHEME != "https" ]]; then
     error "schema must be http or https"
   fi
 
-  if ! $(is_ip_private $OPT_SERVER1) || ! $(is_ip_private $OPT_SERVER2); then
-    OPT_SCHEME="https"
+  # server1 and server2 must in the same network class(internal or public)
+  if $(is_ip_private $OPT_SERVER1) || $(is_ip_private $OPT_SERVER2); then
+    OPT_SCHEME="http"
   fi
 
   if grep '{{graphites}}' /etc/telegraf/telegraf.conf >/dev/null 2>&1; then
@@ -186,6 +191,22 @@ get_valid_servers() {
       my $line = $_;
       my @m = grep(!/NULL/i, split(/\s+/, $line, 2));
       print join(", ", @m);
+    '
+}
+
+is_ip_valid() {
+  local ip="$1"
+  echo -e "$ip" | \
+    perl -ne '
+      chomp;
+      my $ip = $_;
+
+      $ip =~ s/:\d+$//g;
+      my $ip_re = qr/[0-9]|[0-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]/;
+      if ($ip =~ /^$ip_re\.$ip_re\.$ip_re\.$ip_re$/) {
+          exit 0;
+      }
+      exit 1;
     '
 }
 
