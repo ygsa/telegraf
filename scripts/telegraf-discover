@@ -398,6 +398,11 @@ sub create_cnf_if {
     }
   }
 
+  if (Utils::file_crc32($cnf) eq Utils::string_crc32($res)) {
+    Utils::time_print("skip to write as there is no change in the content and source file!");
+    return 0;
+  }
+
   # write res to cnf
   open my $fh, '>', $cnf or carp "open $cnf error: $!";
   return 0 unless defined $fh;
