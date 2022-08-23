@@ -23,6 +23,7 @@ func main() {
 	var cpu, mem, io, limit, comm, all, simple bool
 	var pid int
 	var prefix string
+	var sleep time.Duration
 
 	flag.BoolVar(&cpu, "cpu", false, "whether gather process cpu usage")
 	flag.BoolVar(&mem, "mem", false, "whether gather process mem usage")
@@ -33,6 +34,7 @@ func main() {
 	flag.BoolVar(&simple, "simple", false, "whether gather simple result or not")
 	flag.IntVar(&pid, "pid", 0, "gather process info with process ID")
 	flag.StringVar(&prefix, "prefix", "", "add prefix string to the result fileds")
+	flag.DurationVar(&sleep, "sleep", 100 * time.Millisecond, "sleep time(Millisecond) between cpu usage")
 
 	flag.Parse()
 
@@ -124,7 +126,7 @@ func main() {
 			}
 		}
 
-		cpuPerc, err := proc.Percent(time.Duration(500 * time.Millisecond))
+		cpuPerc, err := proc.Percent(time.Duration(sleep))
 		if err == nil {
 			solarisMode := isSolaris()
 			if solarisMode {
