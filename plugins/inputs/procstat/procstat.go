@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"sync"
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/config"
@@ -23,6 +24,8 @@ var (
 	defaultPIDFinder = NewPgrep
 	defaultProcess   = NewProc
 )
+
+var wg sync.WaitGroup
 
 type PID int32
 
@@ -51,6 +54,7 @@ type Procstat struct {
 
 	PathProcgather string          `toml:"path_procgather"`
 	UseSudo        bool            `toml:"use_sudo"`
+	MaxWorkers     int             `toml:"max_workers"`
 	Timeout        config.Duration `toml:"timeout"`
 	Log            telegraf.Logger `toml:"-"`
 }
@@ -104,6 +108,7 @@ var sampleConfig = `
   ## Sudo must be configured to allow the telegraf user to run procgather
   ## without a password.
   # use_sudo = false
+  # max_workers = 10
 
   ## Specify the path to the procgather executable
   # path_procgather = "/usr/bin/procgather"
@@ -175,10 +180,24 @@ func (p *Procstat) Gather(acc telegraf.Accumulator) error {
 			p.Exe, p.PidFile, p.Pattern, p.User, err.Error()))
 	}
 	p.procs = procs
-
-	for _, proc := range p.procs {
-		p.addMetric(proc, acc, now)
+	maxWorker := p.MaxWorkers
+	if maxWorker == 0 {
+		maxWorker = 10
 	}
+
+	safeRun := make(chan struct{}, maxWorker)
+	for _, proc := range p.procs {
+		wg.Add(1)
+		safeRun <- struct{}{} // block if channel is already filled
+		go func(r Process) {
+			defer wg.Done()
+			p.addMetric(r, acc, now)
+			<-safeRun
+		}(proc)
+	}
+
+	wg.Wait()
+	close(safeRun)
 
 	fields := map[string]interface{}{
 		"pid_count":   len(pids),

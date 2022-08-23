@@ -66,6 +66,7 @@ Processes can be selected for monitoring using one of several methods:
   ## Sudo must be configured to allow the telegraf user to run procgather
   ## without a password.
   # use_sudo = false
+  # max_workers = 10  # concurrency limit if have many process
 
   ## Specify the path to the procgather executable
   # path_procgather = "/usr/bin/procgather"
