@@ -175,7 +175,7 @@ if (defined $consul) {
 
   # prepare consul key value
   $discover = $result->{value} || '';
-  $consul->send_custom_to_graphite('telegraf_consul.status', $result->{status});
+  $consul->send_custom_to_influxdb('telegraf_consul', 'status', $result->{status});
 
   Utils::create_dir_if("$confd") 
       or croak "create $confd error and $confd is not exist";
@@ -214,14 +214,6 @@ if ($is_alive) {
     Utils::time_print("warn - conf was changed but not restart telegraf!");
     $is_trigger++;
   }
-
-  # detect graphite connection, 
-  # telegraf maybe produce many warning log
-  if ($disconf->is_graphite_connection_abnormal($conf)) {
-    Utils::time_print("warn - graphite connection abnormal, restart telegraf!");
-    $is_trigger++;
-  }
-
 }
 else {
   Utils::time_print("error - telegraf is not running");
@@ -274,7 +266,7 @@ if ($is_trigger > 0) {
   if ($update) {
     unless (is_telegraf_conf_ok()) {
       Utils::time_print("error - telegraf --test error, check the config syntax");
-      $consul->send_custom_to_graphite('telegraf_restart.status', 2) if defined $consul;
+      $consul->send_custom_to_influxdb('telegraf_restart', 'status', 2) if defined $consul;
       exit 1;
     }  
     my $cmd = "service telegraf restart";
@@ -283,16 +275,16 @@ if ($is_trigger > 0) {
 
     if ($high != 0 || $low != 0) {
       Utils::time_print("error - $cmd execute error! high: $high, low: $low");
-      $consul->send_custom_to_graphite('telegraf_restart.status', 0) if defined $consul;
+      $consul->send_custom_to_influxdb('telegraf_restart', 'status', 0) if defined $consul;
     }
     else {
       if ($disconf->is_telegraf_alive()) {
         Utils::time_print("ok - $cmd execute ok, and process is running!");
-        $consul->send_custom_to_graphite('telegraf_restart.status', 1) if defined $consul;
+        $consul->send_custom_to_influxdb('telegraf_restart', 'status', 1) if defined $consul;
       }
       else {
         Utils::time_print("error - $cmd execute ok, but process is not running!");
-        $consul->send_custom_to_graphite('telegraf_restart.status', 0) if defined $consul;
+        $consul->send_custom_to_influxdb('telegraf_restart', 'status', 0) if defined $consul;
       }
     }
   }
@@ -956,7 +948,7 @@ sub _get_alive_server {
   return \@servers;
 }
 
-sub get_graphite_server {
+sub get_influxdb_server {
   my $self = shift;
   my $conf = $self->{conf};
 
@@ -972,7 +964,7 @@ sub get_graphite_server {
   my $seen = 0;
   while(<$fh>) {
     chomp;
-    if (m/\[\[outputs.graphite\]\]/i) {
+    if (m/\[\[outputs.influxdb\]\]/i) {
       $seen = 1;
       next;
     }
@@ -983,7 +975,7 @@ sub get_graphite_server {
         my $s = $1;
         if (defined $s) {
           $s =~ s/"//g;
-          @servers = split(/,\s*/, $s);
+          @servers = map { $1 if m|https?://(.+:\d+)/.+|i } split(/,\s*/, $s);
 
           last;
         }
@@ -1167,7 +1159,7 @@ sub get_telegraf_content {
 }
 
 sub _make_line {
-  my ($meta, $key, $value) = @_;
+  my ($meta, $metric, $key, $value) = @_;
 
   # value must be integer
   unless ($value =~ /^\d+$/) {
@@ -1175,26 +1167,28 @@ sub _make_line {
     return undef;
   }
 
-  my $line = "$key;";
+  my $line = "$metric,";
   foreach my $k (qw(dc mark team host ip)) {
     my $v = $meta->{$k} || 'NULL';
 
     $line .= "$k=$v";
-    $line .= ";" if $k ne 'ip';
+    $line .= "," if $k ne 'ip';
   }
 
-  $line .= " $value";
+  $value .= "i" if $value =~ m/^\d+$/i;
+  $line .= " $key=$value";
 
   return $line;
 }
 
-sub send_custom_to_graphite {
+sub send_custom_to_influxdb {
   my $self   = shift;
   my $metric = shift;
+  my $key    = shift;
   my $value  = shift;
 
   my $metas = $self->{metas};
-  my $line  = _make_line($metas, $metric, $value);
+  my $line  = _make_line($metas, $metric, $key, $value);
   return 0 unless defined $line;
   
   my $socket = $self->get_socket();
@@ -1685,33 +1679,6 @@ sub _get_host_ip {
   }
 
   return $ip;
-}
-
-sub is_graphite_connection_abnormal {
-  my $self = shift;
-  my $file = shift;
-
-  my @servers = Utils::get_conf_servers("outputs.graphite", $file);
-  my $n = @servers + 0;
-  return 1 if $n == 0;
-
-  my $res = Utils::exec_cmd_return("netstat -ntp");
-  return 1 if $res =~ /^Err/;
-
-  my $m = 0;
-  foreach my $k (@servers) {
-    my ($host, $port) = split(/:/, $k);
-    my $ip = _get_host_ip($host);
-    if ($res =~ /$ip:$port\s*ESTABLISHED/i) {
-      $m++
-    }
-  }
-
-  if ($n == $m) {
-    return 0;
-  }
-
-  return 1;
 }
 
 sub get_server_list {
