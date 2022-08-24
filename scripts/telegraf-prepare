@@ -1,6 +1,6 @@
 #!/bin/bash
-# set the global tags and graphite server
-# 2021-06-17 <chenzhe07@gmail.com>
+# set the global tags and influx server
+# 2022-08-24 <chenzhe07@gmail.com>
 
 set -e -o pipefail
 [ "$DEBUG" ] && set -x
@@ -53,6 +53,7 @@ main() {
       -2)       shift; OPT_SERVER2="$1"; shift;  ;;
       -k)       shift; OPT_TOKEN="$1";   shift;  ;;
       -s)       shift; OPT_SCHEME="$1";  shift;  ;;
+      -c)       shift; OPT_CONFIG="$1";  shift;  ;;
       -v)       grep -A2 '^=head1 VERSION' "$0" | tail -n1; exit 0 ;;
       -h)       perl -00 -ne 'm/^\s+Usage:/ && print' "$0"; exit 0 ;;
       -*)       echo "Unknown option ${o}. Try -h."; exit 1; ;;
@@ -69,6 +70,9 @@ main() {
   OPT_SERVER1="${OPT_SERVER1:-"NULL"}"
   OPT_SERVER2="${OPT_SERVER2:-"NULL"}"
   OPT_SCHEME="${OPT_SCHEME:-"https"}"
+  OPT_CONFIG="${OPT_CONFIG:-"/etc/telegraf/telegraf.conf"}"
+
+  [[ -e "$OPT_CONFIG" ]] || error "no such file $OPT_CONFIG!"
 
   if [[ ($OPT_ID == "NULL" && $OPT_IP == "NULL" && $OPT_MARK == "NULL") && \
         ($OPT_DC == "NULL" && $OPT_MARK == "NULL" && $OPT_TEAM == "NULL") ]]; then
@@ -94,11 +98,11 @@ main() {
     OPT_SCHEME="http"
   fi
 
-  if grep '{{graphites}}' /etc/telegraf/telegraf.conf >/dev/null 2>&1; then
-    SERVERS=$(get_graphite_servers $OPT_ID $OPT_TEAM $OPT_MARK $OPT_TOKEN $OPT_SERVER1 $OPT_SERVER2 $OPT_SCHEME)
+  if grep '{{influxdbs}}' $OPT_CONFIG >/dev/null 2>&1; then
+    SERVERS=$(get_influxdb_servers $OPT_ID $OPT_TEAM $OPT_MARK $OPT_TOKEN $OPT_SERVER1 $OPT_SERVER2 $OPT_SCHEME)
     if [ "$SERVERS" ]; then
-      if grep '{{graphites}}' /etc/telegraf/telegraf.conf >/dev/null; then
-        sed -i "s/{{graphites}}/$SERVERS/" /etc/telegraf/telegraf.conf
+      if grep '{{influxdbs}}' $OPT_CONFIG >/dev/null; then
+        sed -i "s|{{influxdbs}}|$SERVERS|" $OPT_CONFIG
         [[ "$?" -eq 0 ]] && {
           log "change servers to $SERVERS ok"
         } || {
@@ -107,9 +111,9 @@ main() {
       fi
 
       if [[ $OPT_SCHEME == "https" ]]; then
-        if grep '#tls' /etc/telegraf/telegraf.conf >/dev/null; then
-          sed -i "s/#tls/tls/g" /etc/telegraf/telegraf.conf
-          sed -i "s/#insecure_skip_verify/insecure_skip_verify/" /etc/telegraf/telegraf.conf
+        if grep '#tls' $OPT_CONFIG >/dev/null; then
+          sed -i "s/#tls/tls/g" $OPT_CONFIG
+          sed -i "s/#insecure_skip_verify/insecure_skip_verify/" $OPT_CONFIG
 	fi
       fi
     else
@@ -121,8 +125,8 @@ main() {
 
   if [[ "$OPT_ID" != "NULL" && "$OPT_IP" != "NULL" && "$OPT_MARK" != "NULL" ]]; then
     # delete team, mark, dc line
-    if grep '$TEAM' /etc/telegraf/telegraf.conf >/dev/null; then
-      sed -i "6,7d" /etc/telegraf/telegraf.conf
+    if grep '$TEAM' $OPT_CONFIG >/dev/null; then
+      sed -i "6,7d" $OPT_CONFIG
     fi
     
     # at least one server ok, then change the telegraf default
@@ -143,8 +147,8 @@ EOF
 
   else
     # delete id line
-    if grep '$ID' /etc/telegraf/telegraf.conf >/dev/null; then
-      sed -i "4d" /etc/telegraf/telegraf.conf
+    if grep '$ID' $OPT_CONFIG >/dev/null; then
+      sed -i "4d" $OPT_CONFIG
     fi
 
     IP=$(get_one_ip $OPT_NET)
@@ -255,7 +259,7 @@ is_ip_private() {
     '
 }
 
-get_graphite_servers() {
+get_influxdb_servers() {
   local id="$1"
   local team="$2"
   local mark="$3"
@@ -263,10 +267,12 @@ get_graphite_servers() {
   local server1="$5"
   local server2="$6"
   local scheme="$7"
-  local key="telegraf/${team}/${mark}/graphite_server"
+  local key="telegraf/${team}/${mark}/influxdb_server"
 
+  local dbnumber=0
   if [[ $id != "NULL" ]]; then
-    key="telegraf/comm/graphite_server"
+    dbnumber=12  # diff db number
+    key="telegraf/comm/influxdb_server"
   fi
 
   local value=""
@@ -275,9 +281,9 @@ get_graphite_servers() {
       if [[ $scheme == "http" ]]; then
         value=$(consul-kv -server $server -token $token -key $key)
       else
-        key="telegraf/${team}/${mark}/graphite_server_https"
+        key="telegraf/${team}/${mark}/influxdb_server_https"
         if [[ $id != "NULL" ]]; then
-          key="telegraf/comm/graphite_server_https"
+          key="telegraf/comm/influxdb_server_https"
         fi
         value=$(consul-kv -tls -server $server -token $token -key $key)
       fi
@@ -292,11 +298,16 @@ get_graphite_servers() {
     value="$server1, $server2"
   fi
 
-  verify_servers "$value"
+  verify_servers "$value" $scheme $dbnumber
 }
 
 verify_servers() {
   local servers="$1"
+  local scheme="$2"
+  local dbnumber="$3"
+
+  export TELE_SCHEME="$scheme"
+  export TELE_DBNUMBER="$dbnumber"
   echo -e "$servers" | \
     perl -ne '
       BEGIN {
@@ -308,11 +319,18 @@ verify_servers() {
       
       chomp;
 
+      my $scheme   = $ENV{TELE_SCHEME};
+      my $dbnumber = $ENV{TELE_DBNUMBER};
+
+      if (! defined($scheme) || ! defined($dbnumber)) {
+        die "undefined scheme or dbnumber!\n";
+      }
+
       my @lists = split(/,\s*/, $_);
       foreach my $s (@lists) {
         $s =~ s/\x{22}|\x{27}//g;
         my ($host, $port) = split(/(?::|\s+)/, $s);
-        $port ||= 2003;
+        $port ||= 8480;
 
         my $fail = 0;
         my $socket = IO::Socket::INET->new(
@@ -326,7 +344,7 @@ verify_servers() {
           next;
         }
         unless (grep(/$host:$port/, @servers)) {
-          push @servers, "\"$host:$port\"";
+          push @servers, "\"$scheme://$host:$port/insert/$dbnumber/influx/\"";
         }
       }
     
@@ -425,7 +443,7 @@ fi
 
 =head1 NAME
 
-telegraf-prepare - set the global tags and graphite servers for the telegraf setting.
+telegraf-prepare - set the global tags and influxdb servers for the telegraf setting.
 
 =head1 SYNOPSIS
 
