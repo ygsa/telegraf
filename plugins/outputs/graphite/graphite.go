@@ -162,7 +162,7 @@ func (g *Graphite) checkEOF(conn net.Conn) {
 	conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
 	num, err := conn.Read(b)
 	if err == io.EOF {
-		g.Log.Errorf("Conn %s is closed. closing conn explicitly", conn)
+		g.Log.Errorf("Conn %s is closed. closing conn explicitly", conn.RemoteAddr().String())
 		conn.Close()
 		return
 	}
