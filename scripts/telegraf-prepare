@@ -98,7 +98,13 @@ main() {
     OPT_SCHEME="http"
   fi
 
+  if grep 'outputs.graphite' $OPT_CONFIG >/dev/null 2>&1; then
+    change_conf_file $OPT_CONFIG
+  fi
+
   if grep '{{influxdbs}}' $OPT_CONFIG >/dev/null 2>&1; then
+    OPT_SCHEME="https" # always https when use influx
+
     SERVERS=$(get_influxdb_servers $OPT_ID $OPT_TEAM $OPT_MARK $OPT_TOKEN $OPT_SERVER1 $OPT_SERVER2 $OPT_SCHEME)
     if [ "$SERVERS" ]; then
       if grep '{{influxdbs}}' $OPT_CONFIG >/dev/null; then
@@ -110,11 +116,19 @@ main() {
         }
       fi
 
-      if [[ $OPT_SCHEME == "https" ]]; then
+      if [[ $OPT_SCHEME == "https" && -e "/etc/telegraf/tls" ]]; then
         if grep '#tls' $OPT_CONFIG >/dev/null; then
           sed -i "s/#tls/tls/g" $OPT_CONFIG
           sed -i "s/#insecure_skip_verify/insecure_skip_verify/" $OPT_CONFIG
 	fi
+      fi
+
+      if telegraf --test --config $OPT_CONFIG >/dev/null 2>&1; then
+         info "$OPT_CONFIG change ok"
+         DEL_CONF="${OPT_CONFIG}~"
+         [[ -e "$DEL_CONF" ]] && unlink $DEL_CONF
+      else
+         error "$OPT_CONFIG change error, read more from /var/log/telegraf/telegraf.log"
       fi
     else
       error "no server alive!"
@@ -183,6 +197,58 @@ Thanks for using telegraf!
 ----------------------------------------------------------------------
 BANNER
 
+}
+
+change_conf_file() {
+  local conf="$1"
+  local temp_conf="/tmp/telegraf_temp.conf"
+
+  perl -ne '
+     BEGIN {
+       my $flag = 0;
+       my $out  = "";
+     }
+
+     next if /#\s*Read metrics about cpu/;
+
+     if ($_ =~ m/(?:#\s*Configuration for Graphite server|outputs\.graphite)/i) {
+       $flag = 1;
+     }
+
+     $out .= "$_" if $flag == 0;
+     if ($_ =~ m/inputs\.cpu/i) {
+       $out .=<<"EOF";
+# Configuration for sending metrics to InfluxDB
+[[outputs.influxdb]]
+  urls = [{{influxdbs}}]
+  database = "hostmonitor"
+  database_tag = ""
+  skip_database_creation = true
+  timeout = "5s"
+
+  ## Optional TLS Config
+  #tls_ca = "/etc/telegraf/tls/ca.pem"
+  #tls_cert = "/etc/telegraf/tls/client-cert.pem"
+  #tls_key = "/etc/telegraf/tls/client-key.pem"
+  #insecure_skip_verify = true
+
+  # compress body
+  content_encoding = "gzip"
+
+EOF
+
+       $out .= $_;
+       $flag = 0 if $flag == 1;
+     }
+
+   END {
+     print "$out";
+   }    
+  ' $conf > $temp_conf
+
+  if [[ -e "$temp_conf" ]]; then
+    cp -f -b $temp_conf $conf && unlink $temp_conf
+  fi
 }
 
 get_valid_servers() {
