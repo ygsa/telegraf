@@ -83,8 +83,9 @@ my($update,$verbose,$help);
 my $conf    = "/etc/telegraf/telegraf.conf";
 my $confd   = "/etc/telegraf/telegraf.d";
 my $default = "/etc/default/telegraf";
-my $disf  = "/etc/telegraf/discover.conf";
-my $sock  = "/var/log/telegraf/telegraf.sock";
+my $disf       = "/etc/telegraf/discover.conf";
+my $sleep_file = "/etc/telegraf/discover.sleep";
+my $sock       = "/var/log/telegraf/telegraf.sock";
 my $token = "";
 my $server;
 my $scheme;
@@ -163,6 +164,18 @@ if (defined $default_meta->{id} and defined $default_meta->{ip}) {
 if (defined $default_meta->{disable_consul} and $default_meta->{disable_consul} == 1) {
   Utils::time_print("disable consul feature...");
   $consul = undef;
+}
+
+# sleep feature to reduce consul request
+if (Utils::is_sleep_ok($sleep_file)) {
+  Utils::time_print("enable sleep feature, undef the consul handle...");
+  $consul = undef;
+}
+else {
+  if (defined $consul && $consul->check_is_sleep()) {
+    Utils::time_print("save sleep meta info");
+    Utils::save_sleep_random($sleep_file);
+  }
 }
 
 my $discover = '';
@@ -673,7 +686,7 @@ sub string_crc32 {
 sub read_cfg {
   my $file = shift;
   unless (-f $file) {
-    time_print("no file or file is not exist");
+    time_print("$file - no file or file is not exist");
     return undef;
   }
 
@@ -870,6 +883,37 @@ sub write_file {
   close($fh);
 
   return 1;
+}
+
+# sleep between 1 ~ 5
+sub _gen_random_sleep {
+  my $num = ((10 * rand(1)) % 5) + 1;
+  return $num;
+}
+
+sub save_sleep_random {
+  my $file    = shift;
+  my $num     = _gen_random_sleep();
+  time_print("expire at $num minutes later");
+
+  my $ex_time = (time + ($num * 60));
+  return write_file($file, $ex_time);
+}
+
+sub is_sleep_ok {
+  my $file = shift;
+
+  my $ex_time = read_cfg($file);
+  if (!defined $ex_time or $ex_time !~ m/^\d{10}$/i) {
+    $ex_time = (time - 30);
+  }
+
+  my $now  = time;
+  if ($now <= $ex_time) {
+    return 1;
+  }
+
+  return 0;
 }
 
 1;
@@ -1243,6 +1287,7 @@ sub make_consul_request {
     $result{create_time} = $response->{Flags} || 0;
     $result{value}       = defined $response->{Value} ? decode_base64($response->{Value}) : undef;
   }
+
   return \%result;
 }
 
@@ -1278,6 +1323,14 @@ sub get_consul_key {
 
   if ($tag eq 'inputs') {
     push @keys, "telegraf/$team/$mark/inputs/_lists_";
+  }
+
+  if ($tag eq 'updmark') {
+    push @keys, "telegraf/$team/$mark/is_update";
+  }
+
+  if ($tag eq 'sleepmark') {
+    push @keys, "telegraf/$team/$mark/is_sleep";
   }
 
   if ($is_input) {
@@ -1551,10 +1604,32 @@ sub gen_new_timechange_conf {
   return $counter;
 }
 
+# default is update
+sub check_is_update {
+  my $self = shift;
+
+  my $is_update = ($self->get_key_from_consul({tag => 'updmark'}, 2)->{value});
+  $is_update = 1 unless defined $is_update;
+
+  return $is_update;
+}
+
+sub check_is_sleep {
+  my $self = shift;
+  my $is_sleep = ($self->get_key_from_consul({tag => 'sleepmark'}, 2)->{value}) || 0;
+
+  return $is_sleep;
+}
+
 sub make_consul_discover {
   my $self = shift;
 
   my $counter = 0;
+
+  if ($self->check_is_update() <= 0) {
+    Utils::time_print("ignore as is_update is invalid");
+    return $counter;
+  }
 
   Utils::time_print("discover consul for interval.");
   $counter += $self->gen_new_interval_conf();
