@@ -102,8 +102,14 @@ main() {
     change_conf_file $OPT_CONFIG
   fi
 
+  if [ -e "/etc/telegraf/telegraf.d/socket_listener.conf" ]; then
+    if grep 'graphite' "/etc/telegraf/telegraf.d/socket_listener.conf" >/dev/null 2>&1; then
+      sed -i "s/graphite/influx/" "/etc/telegraf/telegraf.d/socket_listener.conf"
+    fi
+  fi
+
+  OPT_SCHEME="https" # always https when use influx
   if grep '{{influxdbs}}' $OPT_CONFIG >/dev/null 2>&1; then
-    OPT_SCHEME="https" # always https when use influx
 
     SERVERS=$(get_influxdb_servers $OPT_ID $OPT_TEAM $OPT_MARK $OPT_TOKEN $OPT_SERVER1 $OPT_SERVER2 $OPT_SCHEME)
     if [ "$SERVERS" ]; then
