@@ -221,7 +221,7 @@ EOF
   service_address = "unix:///var/log/telegraf/telegraf.sock"
   max_connections = 128
   read_timeout = "10s"
-  data_format = "graphite"
+  data_format = "influx"
 EOF
   fi
 fi
