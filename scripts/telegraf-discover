@@ -654,7 +654,7 @@ sub file_crc32 {
 sub string_crc32 {
  my ($input, $init_value, $polynomial) = @_;
 
- return undef unless defined $input;
+ return '' unless defined $input;
  $init_value = 0 unless (defined $init_value);
  $polynomial = 0xedb88320 unless (defined $polynomial);
 
