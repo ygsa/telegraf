@@ -789,6 +789,11 @@ func (m *Mysql) gatherGlobalStatuses(db *sql.DB, serv string, acc telegraf.Accum
 			return err
 		}
 
+		// skip rsa public key
+		if strings.EqualFold(key, "Rsa_public_key") {
+			continue
+		}
+
 		if m.MetricVersion < 2 {
 			var found bool
 			for _, mapped := range v1.Mappings {
