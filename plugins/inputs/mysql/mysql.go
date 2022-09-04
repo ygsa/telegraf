@@ -645,12 +645,14 @@ func (m *Mysql) gatherGlobalVariables(db *sql.DB, serv string, acc telegraf.Accu
 
 		// Send 20 fields at a time
 		if len(fields) >= 20 {
+			trimNewline(fields)
 			acc.AddFields("mysql_variables", fields, tags)
 			fields = make(map[string]interface{})
 		}
 	}
 	// Send any remaining fields
 	if len(fields) > 0 {
+		trimNewline(fields)
 		acc.AddFields("mysql_variables", fields, tags)
 	}
 	return nil
@@ -709,6 +711,7 @@ func (m *Mysql) gatherSlaveStatuses(db *sql.DB, serv string, acc telegraf.Accumu
 				fields["slave_"+col] = value
 			}
 		}
+		trimNewline(fields)
 		acc.AddFields("mysql", fields, tags)
 	}
 
@@ -762,6 +765,7 @@ func (m *Mysql) gatherBinaryLogs(db *sql.DB, serv string, acc telegraf.Accumulat
 		"binary_files_count": count,
 	}
 
+	trimNewline(fields)
 	acc.AddFields("mysql", fields, tags)
 	return nil
 }
@@ -787,11 +791,6 @@ func (m *Mysql) gatherGlobalStatuses(db *sql.DB, serv string, acc telegraf.Accum
 
 		if err = rows.Scan(&key, &val); err != nil {
 			return err
-		}
-
-		// skip rsa public key
-		if strings.EqualFold(key, "Rsa_public_key") {
-			continue
 		}
 
 		if m.MetricVersion < 2 {
@@ -870,16 +869,26 @@ func (m *Mysql) gatherGlobalStatuses(db *sql.DB, serv string, acc telegraf.Accum
 
 		// Send 20 fields at a time
 		if len(fields) >= 20 {
+			trimNewline(fields)
 			acc.AddFields("mysql", fields, tags)
 			fields = make(map[string]interface{})
 		}
 	}
 	// Send any remaining fields
 	if len(fields) > 0 {
+		trimNewline(fields)
 		acc.AddFields("mysql", fields, tags)
 	}
 
 	return nil
+}
+
+func trimNewline (fields map[string]interface{}) {
+	for k, v := range fields {
+		if s, ok := v.(string); ok {
+			fields[k] = strings.ReplaceAll(s, "\n", "")
+		}
+	}
 }
 
 // GatherProcessList can be used to collect metrics on each running command
