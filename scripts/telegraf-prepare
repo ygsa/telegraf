@@ -130,7 +130,7 @@ main() {
       fi
 
       if telegraf --test --config $OPT_CONFIG >/dev/null 2>&1; then
-         info "$OPT_CONFIG change ok"
+         log "$OPT_CONFIG change ok"
          DEL_CONF="${OPT_CONFIG}~"
          [[ -e "$DEL_CONF" ]] && unlink $DEL_CONF
       else
@@ -361,8 +361,11 @@ get_influxdb_servers() {
       fi
     
       if [ "$?" -ne 0 ]; then
-        value=""
+        value="$server1, $server2"  # the same as servers if can not get value
       else
+        if [[ $value == "" ]]; then
+          value="$server1, $server2"  # the same as servers if can not get value
+	fi
         break
       fi
     done
