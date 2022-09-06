@@ -230,6 +230,10 @@ if ($is_alive) {
 }
 else {
   Utils::time_print("error - telegraf is not running");
+  if (is_telegraf_conf_ok()) {
+    Utils::time_print("telegraf is not running, but config check is ok, start...");
+    $is_trigger++;
+  }
 }
 
 # detect and generate sub conf file for listen service
