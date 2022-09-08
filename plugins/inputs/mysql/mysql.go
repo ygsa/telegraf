@@ -205,6 +205,8 @@ func (m *Mysql) Gather(acc telegraf.Accumulator) error {
 	}
 
 	wg.Wait()
+	m.lastT = time.Now() // maybe multiple instance
+
 	return nil
 }
 
@@ -502,7 +504,6 @@ func (m *Mysql) gatherServer(serv string, acc telegraf.Accumulator) error {
 				if err != nil {
 					return err
 				}
-				m.lastT = time.Now()
 			}
 		}
 	}
