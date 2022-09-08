@@ -2653,6 +2653,7 @@ sub gen_conf_for_listen {
   foreach my $p (keys %$res) {
     my $port = $res->{$p};
     next if _is_in_array($port, \@ignore_ports);
+    next if $ignore_ports[0] eq 'all';
 
     my $user = $secs->{user} || undef;
     my $pass = $secs->{$port} || $secs->{pass} || undef;
