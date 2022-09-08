@@ -2099,7 +2099,7 @@ sub disc_mysql {
 
   ## Some queries we may want to run less often (such as SHOW GLOBAL VARIABLES)
   ##   example: interval_slow = "30m"
-  interval_slow = "3m"
+  interval_slow = "1m"
 TEMP_END
 
   return _replace_mysql($temp, $items);

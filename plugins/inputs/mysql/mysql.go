@@ -205,7 +205,13 @@ func (m *Mysql) Gather(acc telegraf.Accumulator) error {
 	}
 
 	wg.Wait()
-	m.lastT = time.Now() // maybe multiple instance
+
+	// maybe multiple instance
+	if m.GatherGlobalVars {
+		if len(m.IntervalSlow) > 0 && uint32(time.Since(m.lastT).Seconds()) >= m.scanIntervalSlow  {
+			m.lastT = time.Now()
+		}
+	}
 
 	return nil
 }
