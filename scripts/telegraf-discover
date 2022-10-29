@@ -512,7 +512,7 @@ sub remove_psquote {
 }
 
 my @shell_escape_chars = (
-  '"', '`', '\x27',
+  '"', '`', "\x27",
 );
 
 sub unescape_for_shell {
