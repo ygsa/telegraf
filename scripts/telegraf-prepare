@@ -134,7 +134,7 @@ main() {
          DEL_CONF="${OPT_CONFIG}~"
          [[ -e "$DEL_CONF" ]] && unlink $DEL_CONF
       else
-         error "$OPT_CONFIG change error, read more from /var/log/telegraf/telegraf.log"
+         warn "$OPT_CONFIG change error, read more from /var/log/telegraf/telegraf.log"
       fi
     else
       error "no server alive!"
