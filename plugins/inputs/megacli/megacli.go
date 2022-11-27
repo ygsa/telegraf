@@ -251,6 +251,8 @@ func (m *Megacli) gatherRaidStatus(out string, acc telegraf.Accumulator) error {
 				stateVal = 1
 			case "Degraded":
 				stateVal = 2
+			case "Offline":
+				stateVal = 3
 			}
 			fields["state"] = stateVal
 		}
