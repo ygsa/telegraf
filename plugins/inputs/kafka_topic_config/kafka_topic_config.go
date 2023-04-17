@@ -111,6 +111,13 @@ func (k *KafkaTopicConfig) Gather(acc telegraf.Accumulator) error {
 		acc.AddError(e)
 		return e
 	}
+	defer func() {
+		e = k.adm.Close()
+		if e != nil {
+			e = fmt.Errorf("Close Kafka Cli Err %s ", e)
+			acc.AddError(e)
+		}
+	}()
 	topics, e := k.adm.ListTopics()
 	if e != nil {
 		e = fmt.Errorf("Unable to list topics: %v\n", e)
@@ -146,7 +153,6 @@ func (k *KafkaTopicConfig) Gather(acc telegraf.Accumulator) error {
 		}
 		acc.AddFields("kafka_topic_config", fields, tags)
 	}
-
 	return nil
 }
 
