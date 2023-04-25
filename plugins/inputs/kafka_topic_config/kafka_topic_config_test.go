@@ -14,7 +14,7 @@ func TestGather(t *testing.T) {
 	seedBroker.SetHandlerByMap(map[string]sarama.MockResponse{
 		"MetadataRequest": sarama.NewMockMetadataResponse(t).
 			SetController(seedBroker.BrokerID()).
-			SetLeader("test_topic", 0, seedBroker.BrokerID()).
+			SetLeader("test_topic", 1, seedBroker.BrokerID()).
 			SetBroker(seedBroker.Addr(), seedBroker.BrokerID()),
 		"DescribeConfigsRequest": sarama.NewMockDescribeConfigsResponse(t),
 	})
@@ -26,15 +26,16 @@ func TestGather(t *testing.T) {
 		ReadConfig:  kafka.ReadConfig{},
 	}
 	e := KTC.Gather(&acc)
-
 	if e != nil {
 		t.Fatal(e)
 	}
 	ktcTags := map[string]string{"topic": "test_topic"}
 	ktcFields := map[string]interface{}{
-		"max_message_bytes": float64(1000000),
-		"retention_ms":      float64(5000),
-		"password":          float64(12345),
+		"max_message_bytes":  float64(1000000),
+		"retention_ms":       float64(5000),
+		"password":           float64(12345),
+		"num_partitions":     float64(1),
+		"replication_factor": float64(1),
 	}
 
 	acc.AssertContainsTaggedFields(t, "kafka_topic_config", ktcFields, ktcTags)

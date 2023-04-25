@@ -125,7 +125,7 @@ func (k *KafkaTopicConfig) Gather(acc telegraf.Accumulator) error {
 		return e
 	}
 
-	for topicName, _ := range topics {
+	for topicName, topicDetail := range topics {
 		cfg, e := k.adm.DescribeConfig(sarama.ConfigResource{
 			Type: sarama.TopicResource,
 			Name: topicName,
@@ -141,6 +141,8 @@ func (k *KafkaTopicConfig) Gather(acc telegraf.Accumulator) error {
 			tags["cluster"] = k.ClusterName
 		}
 		fields := map[string]interface{}{}
+		fields["replication_factor"] = float64(topicDetail.ReplicationFactor)
+		fields["num_partitions"] = float64(topicDetail.NumPartitions)
 		for _, entry := range cfg {
 			if !k.needGatherConf(entry.Name) {
 				continue
