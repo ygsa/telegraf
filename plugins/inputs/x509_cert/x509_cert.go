@@ -247,10 +247,8 @@ func (c *X509Cert) Gather(acc telegraf.Accumulator) error {
 
 			_, err = cert.Verify(opts)
 			if err == nil {
-				tags["verification"] = "valid"
 				fields["verification_code"] = 0
 			} else {
-				tags["verification"] = "invalid"
 				fields["verification_code"] = 1
 				fields["verification_error"] = err.Error()
 			}
