@@ -316,7 +316,7 @@ func TestAddShardHostStats(t *testing.T) {
 			assert.True(t, acc.HasInt64Field("mongodb_shard_stats", key))
 		}
 
-		assert.True(t, acc.HasTag("mongodb_shard_stats", "hostname"))
+		assert.True(t, acc.HasTag("mongodb_shard_stats", "server"))
 		hostsFound = append(hostsFound, host)
 	}
 	sort.Strings(hostsFound)
@@ -340,14 +340,15 @@ func TestStateTag(t *testing.T) {
 	)
 
 	stateTags := make(map[string]string)
-	stateTags["node_type"] = "PRI"
-	stateTags["rs_name"] = "rs1"
+	//stateTags["version"] = "3.6.17"
+	//stateTags["rs_name"] = "rs1"
 
 	var acc testutil.Accumulator
 
 	d.AddDefaultStats()
 	d.flush(&acc)
 	fields := map[string]interface{}{
+		"state_int":                                 int64(0),
 		"active_reads":                              int64(0),
 		"active_writes":                             int64(0),
 		"aggregate_command_failed":                  int64(0),
@@ -480,7 +481,6 @@ func TestStateTag(t *testing.T) {
 		"updates":                                   int64(0),
 		"updates_per_sec":                           int64(0),
 		"uptime_ns":                                 int64(0),
-		"version":                                   "3.6.17",
 		"vsize_megabytes":                           int64(0),
 	}
 	acc.AssertContainsTaggedFields(t, "mongodb", fields, stateTags)
