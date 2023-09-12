@@ -12,6 +12,8 @@ type MongodbData struct {
 	StatLine      *StatLine
 	Fields        map[string]interface{}
 	Tags          map[string]string
+	MetaTags      map[string]string
+	MetaFields    map[string]interface{}
 	DbData        []DbData
 	ColData       []ColData
 	ShardHostData []DbData
@@ -29,12 +31,22 @@ type ColData struct {
 	Fields map[string]interface{}
 }
 
+func copyTagsMap(globalTags map[string]string) map[string]string {
+	tags := make(map[string]string)
+	for k, v := range globalTags {
+		tags[k] = v
+	}
+
+	return tags
+}
 func NewMongodbData(statLine *StatLine, tags map[string]string) *MongodbData {
 	return &MongodbData{
-		StatLine: statLine,
-		Tags:     tags,
-		Fields:   make(map[string]interface{}),
-		DbData:   []DbData{},
+		StatLine:   statLine,
+		Tags:       tags,
+		Fields:     make(map[string]interface{}),
+		DbData:     []DbData{},
+		MetaTags:   copyTagsMap(tags),
+		MetaFields: make(map[string]interface{}),
 	}
 }
 
@@ -301,7 +313,21 @@ func (d *MongodbData) AddDbStats() {
 		d.DbData = append(d.DbData, *newDbData)
 	}
 }
+func (d *MongodbData) AddMetaInfo() {
+	if d.StatLine.ReplSetName != "" {
+		d.MetaTags["rs_name"] = d.StatLine.ReplSetName
+	}
 
+	if d.StatLine.Version != "" {
+		d.MetaTags["version"] = d.StatLine.Version
+	}
+
+	if d.StatLine.StorageEngine != "" {
+		d.MetaTags["storage_engine"] = d.StatLine.StorageEngine
+	}
+
+	d.addMeta("meta_info", 1)
+}
 func (d *MongodbData) AddColStats() {
 	for _, colstat := range d.StatLine.ColStatsLines {
 		colStatLine := reflect.ValueOf(&colstat).Elem()
@@ -356,23 +382,15 @@ func (d *MongodbData) AddDefaultStats() {
 	d.addStat(statLine, defaultStats)
 	if d.StatLine.NodeType != "" {
 		d.addStat(statLine, defaultReplStats)
-		d.Tags["node_type"] = d.StatLine.NodeType
+		d.add("state_int", d.StatLine.NodeTypeInt)
 	}
 
 	if d.StatLine.ReadLatency > 0 {
 		d.addStat(statLine, defaultLatencyStats)
 	}
 
-	if d.StatLine.ReplSetName != "" {
-		d.Tags["rs_name"] = d.StatLine.ReplSetName
-	}
-
 	if d.StatLine.OplogStats != nil {
 		d.add("repl_oplog_window_sec", d.StatLine.OplogStats.TimeDiff)
-	}
-
-	if d.StatLine.Version != "" {
-		d.add("version", d.StatLine.Version)
 	}
 
 	d.addStat(statLine, defaultAssertsStats)
@@ -407,7 +425,18 @@ func (d *MongodbData) add(key string, val interface{}) {
 	d.Fields[key] = val
 }
 
+func (d *MongodbData) addMeta(key string, val interface{}) {
+	d.MetaFields[key] = val
+}
+
 func (d *MongodbData) flush(acc telegraf.Accumulator) {
+	acc.AddFields(
+		"mongodb_meta",
+		d.MetaFields,
+		d.MetaTags,
+		d.StatLine.Time,
+	)
+	d.MetaFields = make(map[string]interface{})
 	acc.AddFields(
 		"mongodb",
 		d.Fields,
@@ -438,7 +467,7 @@ func (d *MongodbData) flush(acc telegraf.Accumulator) {
 		col.Fields = make(map[string]interface{})
 	}
 	for _, host := range d.ShardHostData {
-		d.Tags["hostname"] = host.Name
+		d.Tags["server"] = host.Name
 		acc.AddFields(
 			"mongodb_shard_stats",
 			host.Fields,
