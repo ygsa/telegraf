@@ -248,14 +248,15 @@ type TransactionStats struct {
 
 // ReplStatus stores data related to replica sets.
 type ReplStatus struct {
-	SetName      string      `bson:"setName"`
-	IsMaster     interface{} `bson:"ismaster"`
-	Secondary    interface{} `bson:"secondary"`
-	IsReplicaSet interface{} `bson:"isreplicaset"`
-	ArbiterOnly  interface{} `bson:"arbiterOnly"`
-	Hosts        []string    `bson:"hosts"`
-	Passives     []string    `bson:"passives"`
-	Me           string      `bson:"me"`
+	SetName           string      `bson:"setName"`
+	IsWritablePrimary interface{} `bson:"isWritablePrimary"` // mongodb 5.x
+	IsMaster          interface{} `bson:"ismaster"`
+	Secondary         interface{} `bson:"secondary"`
+	IsReplicaSet      interface{} `bson:"isreplicaset"`
+	ArbiterOnly       interface{} `bson:"arbiterOnly"`
+	Hosts             []string    `bson:"hosts"`
+	Passives          []string    `bson:"passives"`
+	Me                string      `bson:"me"`
 }
 
 // DBRecordStats stores data related to memory operations across databases.
@@ -763,6 +764,7 @@ type StatLine struct {
 	NumConnections                           int64
 	ReplSetName                              string
 	NodeType                                 string
+	NodeTypeInt                              int64
 	NodeState                                string
 	NodeStateInt                             int64
 
@@ -1163,17 +1165,25 @@ func NewStatLine(oldMongo, newMongo MongoStatus, key string, all bool, sampleSec
 	if newStat.Repl != nil {
 		returnVal.ReplSetName = newStat.Repl.SetName
 		// BEGIN code modification
-		if newStat.Repl.IsMaster.(bool) {
+		if val, ok := newStat.Repl.IsMaster.(bool); ok && val {
 			returnVal.NodeType = "PRI"
-		} else if newStat.Repl.Secondary != nil && newStat.Repl.Secondary.(bool) {
+			returnVal.NodeTypeInt = 1
+		} else if val, ok := newStat.Repl.IsWritablePrimary.(bool); ok && val {
+			returnVal.NodeType = "PRI"
+			returnVal.NodeTypeInt = 1
+		} else if val, ok := newStat.Repl.Secondary.(bool); ok && val {
 			returnVal.NodeType = "SEC"
-		} else if newStat.Repl.ArbiterOnly != nil && newStat.Repl.ArbiterOnly.(bool) {
+			returnVal.NodeTypeInt = 2
+		} else if val, ok := newStat.Repl.ArbiterOnly.(bool); ok && val {
 			returnVal.NodeType = "ARB"
+			returnVal.NodeTypeInt = 7
 		} else {
 			returnVal.NodeType = "UNK"
+			returnVal.NodeTypeInt = 6
 		} // END code modification
 	} else if returnVal.IsMongos {
 		returnVal.NodeType = "RTR"
+		returnVal.NodeTypeInt = 99
 	}
 
 	if oldStat.ExtraInfo != nil && newStat.ExtraInfo != nil &&
