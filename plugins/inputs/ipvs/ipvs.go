@@ -57,13 +57,19 @@ func (i *IPVS) Gather(acc telegraf.Accumulator) error {
 			"pps_out":     s.Stats.PPSOut,
 			"cps":         s.Stats.CPS,
 		}
-		acc.AddGauge("ipvs_virtual_server", fields, serviceTags(s))
 
 		destinations, err := i.handle.GetDestinations(s)
 		if err != nil {
+			// if get destinations fails, move on to the next virtual server
+			acc.AddGauge("ipvs_virtual_server", fields, serviceTags(s))
 			i.Log.Errorf("Failed to list destinations for a virtual server: %v", err)
 			continue // move on to the next virtual server
 		}
+
+		// add destinations count
+		fields["real_server_count"] = len(destinations)
+		// add destinations count for virtual server
+		acc.AddGauge("ipvs_virtual_server", fields, serviceTags(s))
 
 		for _, d := range destinations {
 			fields := map[string]interface{}{
