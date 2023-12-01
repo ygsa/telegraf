@@ -38,7 +38,7 @@ var sampleConfig = `
   # urls = ["http://localhost:34545"]
 
   ## The name of the job
-  # job_name = "test_job"
+  # job = "test_job"
 
   ## Set http_proxy (telegraf uses the system wide proxy settings if it's is not set)
   # http_proxy = "http://localhost:8888"
