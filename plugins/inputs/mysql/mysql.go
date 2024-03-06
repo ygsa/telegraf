@@ -638,7 +638,7 @@ func (m *Mysql) gatherGlobalVariables(db *sql.DB, serv string, acc telegraf.Accu
 		key = strings.ToLower(key)
 
 		// parse mysql version and put into field and tag
-		if strings.Contains(key, "version") {
+		if strings.HasSuffix(key, "version") {
 			fields[key] = string(val)
 			tags[key] = string(val)
 		}
